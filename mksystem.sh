@@ -12,10 +12,11 @@ export PATH="/usr/lib/ccache/bin:${PATH}"
 # CPU stuff
 MKSYSTEM_ARCH=armv8-a+crypto+crc
 MKSYSTEM_HOST=$(echo ${MACHTYPE} | sed "s/-[^-]*/-cross/")
-MKSYSTEM_TARGET=aarch64-linux-musleabihf
+MKSYSTEM_TARGET=aarch64-linux-musl
 MKSYSTEM_TARGET_CFLAGS="-O3 -march=armv8-a+crc+simd+crypto -mcpu=cortex-a72+crc+simd+crypto"
 # Paths
 MKSYSTEM_ROOT="${ROOT_DIR}/build"
+MKSYSTEM_PREFIX="${MKSYSTEM_ROOT}/prefix"
 MKSYSTEM_STATE="${MKSYSTEM_ROOT}/state"
 MKSYSTEM_SOURCES="${MKSYSTEM_ROOT}/sources"
 MKSYSTEM_CROSS_TOOLS="${MKSYSTEM_ROOT}/cross-tools"
@@ -35,7 +36,6 @@ MUSL_VERSION=1.2.1
 
 
 # Misc Functions
-
 function download() {
     if [ ! -f "$(basename "${1}")" ]; then
         aria2c -x4 -s4 "${1}"
@@ -61,6 +61,7 @@ function isDone() {
 mkdir -p "${MKSYSTEM_ROOT}"
 mkdir -p "${MKSYSTEM_STATE}" "${MKSYSTEM_STATE}/installed"
 mkdir -p "${MKSYSTEM_SOURCES}"
+mkdir -p "${MKSYSTEM_PREFIX}"
 
 mkdir -p "${MKSYSTEM_CROSS_TOOLS_TARGET}"
 if ! ls "${MKSYSTEM_CROSS_TOOLS_TARGET}/usr"; then
@@ -79,6 +80,7 @@ if ! isDone "cross-kernel-headers"; then
     extract "linux-${LINUX_VERSION}.tar.xz" "linux-${LINUX_VERSION}"
     pushd "linux-${LINUX_VERSION}"
     #make mrproper
+
     #make ARCH="arm64" headers_check
     make ARCH="arm64" INSTALL_HDR_PATH="${MKSYSTEM_CROSS_TOOLS_TARGET}" headers_install
     popd
@@ -167,8 +169,62 @@ if ! isDone "cross-musl"; then
     markDone "cross-musl"
 fi
 
+# 2.5 Install cross gcc.
+if ! isDone "cross-gcc"; then
+    pushd "${MKSYSTEM_SOURCES}"
+    download "ftp://ftp.mirrorservice.org/sites/sourceware.org/pub/gcc/releases/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz"
+    extract "gcc-${GCC_VERSION}.tar.xz" "gcc-${GCC_VERSION}"
+    pushd "gcc-${GCC_VERSION}"
+    ./contrib/download_prerequisites
+    popd
+    mkdir -p "cross-gcc-build"
+    pushd "cross-gcc-build"
 
+    "../gcc-${GCC_VERSION}/configure" \
+        --prefix="${MKSYSTEM_CROSS_TOOLS}" \
+        --build="${MKSYSTEM_HOST}" \
+        --host="${MKSYSTEM_HOST}" \
+        --target="${MKSYSTEM_TARGET}" \
+        --with-sysroot="${MKSYSTEM_CROSS_TOOLS_TARGET}" \
+        --disable-nls \
+        --enable-languages=c,c++ \
+        --enable-c99 \
+        --enable-long-long \
+        --disable-libmudflap --disable-libsanitizer \
+        --disable-multilib \
+        --disable-bootstrap \
+        --with-arch=armv8-a+crc+simd+crypto --enable-fix-cortex-a53-835769 --enable-fix-cortex-a53-843419
+    make "${MAKEFLAGS}"
+    make install "${MAKEFLAGS}"
+    popd
+    rm -rf "cross-gcc-build"
+    popd
+    markDone "cross-gcc"
+fi
 
+# 3. Start setting up the prefix.
+
+# 3.1. Create paths.
+if ! isDone "create-prefix-paths"; then
+    pushd "${MKSYSTEM_PREFIX}"
+    mkdir -pv usr/{bin,include,lib,share,src}
+		ln -s usr/bin bin
+  	ln -s usr/bin sbin
+  	ln -s bin usr/sbin
+    ln -s usr/lib lib
+    ln -s usr/lib lib64
+    ln -s lib usr/lib64 
+    mkdir -p run/{lock,user}
+    mkdir -p var/{cache,lib,local,log,opt,spool}
+  	ln -s ../run var/run
+  	ln -s ../run/lock var/lock
+		mkdir -pv {boot,dev,etc,home}
+		mkdir -pv {mnt,proc,srv,sys}
+		install -dv -m 0750 root
+		install -dv -m 1777 {var/,}tmp
+    popd
+    markDone "create-prefix-paths"
+fi
 
 
 exit
