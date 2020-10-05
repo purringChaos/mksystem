@@ -5,7 +5,6 @@ set -o pipefail
 shopt -s extglob
 
 ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-cd "${ROOT_DIR}"
 
 export PATH="/usr/lib/ccache/bin:${PATH}"
 
