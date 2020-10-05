@@ -115,7 +115,7 @@ function cmakeBuild() {
 		shift
 		cmake -GNinja . -DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" -DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" -DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" -DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_INSTALL_PREFIX=/usr $@
 		ninja "${MAKEFLAGS}"
- 		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
+		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
 		ninja clean "${MAKEFLAGS}"
 	popd
 }
@@ -584,13 +584,13 @@ fi
 # 5. Font Stuff.. (there has been circular depends for years at this point ":\(" )
 # 5.1. Graphite2 - Stage0
 if ! isDone "graphite-stage0"; then
-  pushd "${MKSYSTEM_SOURCES}"
-    downloadExtract "https://github.com/silnrsi/graphite/releases/download/${GRAPHITE2_VERSION}/graphite2-${GRAPHITE2_VERSION}.tgz"
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://github.com/silnrsi/graphite/releases/download/${GRAPHITE2_VERSION}/graphite2-${GRAPHITE2_VERSION}.tgz"
 		pushd "graphite2-${GRAPHITE2_VERSION}"
 			sed -i "/cmptest/d" "tests/CMakeLists.txt" || true
 		popd
-    cmakeBuild "graphite2-${GRAPHITE2_VERSION}"
-  popd
+		cmakeBuild "graphite2-${GRAPHITE2_VERSION}"
+	popd
 	markDone "graphite-stage0"
 fi
 
