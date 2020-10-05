@@ -46,6 +46,7 @@ LIBXKBCOMMON_VERSION=1.0.1
 PIXMAN_VERSION=0.40.0
 WLROOTS_VERSION=0.11.0
 PCRE_VERSION=8.44
+GRAPHITE2_VERSION=1.3.14
 #VVER
 
 # Misc Functions
@@ -56,15 +57,15 @@ function download() {
 }
 
 function extract() {
-	DIR="${2:-$(echo "${1}" | sed s/.tar.*$//)}"
+	DIR="${2:-$(echo "$(basename "${1}")" | sed s/.tar.*$// | sed s/.t[gx]z$//)}"
 	if [ ! -d "${DIR}" ]; then
-		bsdtar xf "${1}"
+		bsdtar xf "$(basename "${1}")"
 	fi
 }
 
 function downloadExtract() {
 	download "${1}"
-	extract "${1} ""${2}"
+	extract "${1}"
 }
 
 function markDone() {
@@ -106,6 +107,16 @@ function autotoolsBuild() {
 			DESTDIR="${DEST}" make install "${MAKEFLAGS}"
 		fi
 		make clean "${MAKEFLAGS}"
+	popd
+}
+
+function cmakeBuild() {
+	pushd "${1}"
+		shift
+		cmake -GNinja . -DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" -DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" -DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" -DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_INSTALL_PREFIX=/usr $@
+		ninja "${MAKEFLAGS}"
+ 		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
+		ninja clean "${MAKEFLAGS}"
 	popd
 }
 
@@ -539,12 +550,7 @@ fi
 if ! isDone "json-c"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "json-c" ] && git clone --depth=1 "https://github.com/json-c/json-c.git"
-		pushd "json-c"
-			cmake . -DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" -DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" -DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" -DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_INSTALL_PREFIX=/usr
-			make "${MAKEFLAGS}"
-			DESTDIR="${MKSYSTEM_PREFIX}" make install "${MAKEFLAGS}"
-			make clean "${MAKEFLAGS}"
-		popd
+		cmakeBuild "json-c"
 	popd
 	markDone "json-c"
 fi
@@ -573,6 +579,19 @@ if ! isDone "glib"; then
 		mesonBuild "glib" -Dman=false -Dgtk_doc=false -Dlibelf=disabled
 	popd
 	markDone "glib"
+fi
+
+# 5. Font Stuff.. (there has been circular depends for years at this point ":\(" )
+# 5.1. Graphite2 - Stage0
+if ! isDone "graphite-stage0"; then
+  pushd "${MKSYSTEM_SOURCES}"
+    downloadExtract "https://github.com/silnrsi/graphite/releases/download/${GRAPHITE2_VERSION}/graphite2-${GRAPHITE2_VERSION}.tgz"
+		pushd "graphite2-${GRAPHITE2_VERSION}"
+			sed -i "/cmptest/d" "tests/CMakeLists.txt" || true
+		popd
+    cmakeBuild "graphite2-${GRAPHITE2_VERSION}"
+  popd
+	markDone "graphite-stage0"
 fi
 
 
