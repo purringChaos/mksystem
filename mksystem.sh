@@ -13,7 +13,7 @@ export PATH="/usr/lib/ccache/bin:${PATH}"
 MKSYSTEM_ARCH=armv8-a+crypto+crc
 MKSYSTEM_HOST=$(echo ${MACHTYPE} | sed "s/-[^-]*/-cross/")
 MKSYSTEM_TARGET=aarch64-linux-musl
-MKSYSTEM_TARGET_CFLAGS="-Os -march=armv8-a+crc+simd+crypto -mcpu=cortex-a72+crc+simd+crypto -mlittle-endian -Wno-parentheses"
+MKSYSTEM_TARGET_CFLAGS="-Os -march=armv8-a+crc+simd+crypto -mcpu=cortex-a72+crc+simd+crypto -mlittle-endian -Wno-parentheses -Wno-error=redundant-decls"
 # Paths
 MKSYSTEM_ROOT="${ROOT_DIR}/build"
 MKSYSTEM_FILES="${ROOT_DIR}/files"
@@ -24,6 +24,8 @@ MKSYSTEM_CROSS_TOOLS="${MKSYSTEM_ROOT}/cross-tools"
 MKSYSTEM_CROSS_TOOLS_TARGET="${MKSYSTEM_CROSS_TOOLS}/${MKSYSTEM_TARGET}"
 MKSYSTEM_CCACHE_BIN="${MKSYSTEM_ROOT}/ccachebin"
 MKSYSTEM_MISC="${MKSYSTEM_ROOT}/misc"
+
+MKSYSTEM_TARGET_CFLAGS="${MKSYSTEM_TARGET_CFLAGS} -I${MKSYSTEM_PREFIX}/usr/include --sysroot=${MKSYSTEM_PREFIX}"
 
 export PATH="${MKSYSTEM_CCACHE_BIN}:${MKSYSTEM_CROSS_TOOLS}/bin:${MKSYSTEM_CROSS_TOOLS_TARGET}/bin:${PATH}"
 
@@ -43,10 +45,15 @@ LIBDRM_VERSION=2.4.102
 LIBINPUT_VERSION=1.16.1
 MTDEV_VERSION=1.1.6
 LIBXKBCOMMON_VERSION=1.0.1
+LIBPNG_VERSION=1.6.37
 PIXMAN_VERSION=0.40.0
 WLROOTS_VERSION=0.11.0
 PCRE_VERSION=8.44
 GRAPHITE2_VERSION=1.3.14
+FREETYPE_VERSION=2.10.2
+HARFBUZZ_VERSION=2.7.2
+SWAY_VERSION=1.5
+
 #VVER
 
 # Misc Functions
@@ -90,7 +97,8 @@ function mesonBuild() {
 }
 
 function autotoolsBuild() {
-	pushd "${1}"
+	NAME="${1}"
+	pushd "${NAME}"
 		shift
 		[ ! -f "configure" ] && [ -f "buildconf.sh" ] && ./buildconf.sh
 		[ ! -f "configure" ] && [ -f "autogen.sh" ] && ./autogen.sh
@@ -380,7 +388,16 @@ if ! isDone "libffi"; then
 	markDone "libffi"
 fi
 
-# 4.7. Create a cross compiler file for meson.
+# 4.7. Install libpng.
+if ! isDone "libpng"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://downloads.sourceforge.net/libpng/libpng-${LIBPNG_VERSION}.tar.xz"
+		CC="${MKSYSTEM_TARGET}-gcc ${MKSYSTEM_TARGET_CFLAGS}" autotoolsBuild "libpng-${LIBPNG_VERSION}" --prefix=/usr --host="${MKSYSTEM_TARGET}"
+	popd
+	markDone "libpng"
+fi
+
+# 4.8. Create a cross compiler file for meson.
 if ! isDone "meson-cross-make"; then
 	pushd "${MKSYSTEM_MISC}"
 		cat > meson.cross <<EOF
@@ -409,7 +426,7 @@ EOF
 	markDone "meson-cross-make"
 fi
 
-# 4.8. Install wayland.
+# 4.9. Install wayland.
 if ! isDone "wayland"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "wayland" ] && git clone --depth=1 "https://github.com/wayland-project/wayland"
@@ -423,7 +440,7 @@ if ! isDone "wayland"; then
 	markDone "wayland"
 fi
 
-# 4.9. Install libdrm
+# 4.10. Install libdrm
 if ! isDone "libdrm"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://dri.freedesktop.org/libdrm/libdrm-${LIBDRM_VERSION}.tar.xz"
@@ -436,7 +453,7 @@ if ! isDone "libdrm"; then
 	markDone "libdrm"
 fi
 
-# 4.10. Install expat.
+# 4.11. Install expat.
 if ! isDone "expat"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "expat" ] && git clone "https://github.com/libexpat/libexpat"
@@ -445,7 +462,7 @@ if ! isDone "expat"; then
 	markDone "expat"
 fi
 
-# 4.11. Install mesa!
+# 4.12. Install mesa!
 if ! isDone "mesa"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "mesa" ] && git clone --depth=1 "https://gitlab.freedesktop.org/mesa/mesa"
@@ -458,7 +475,7 @@ if ! isDone "mesa"; then
 	markDone "mesa"
 fi
 
-# 4.12. Install util-linux's libs (libblkid, etc)
+# 4.13. Install util-linux's libs (libblkid, etc)
 if ! isDone "util-linux"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "util-linux" ] && git clone --depth=1 "https://github.com/karelzak/util-linux"
@@ -469,13 +486,12 @@ if ! isDone "util-linux"; then
 			--without-systemd \
 			--disable-all-programs \
 			--disable-nls \
-			--enable-libblkid
+			--enable-libblkid --enable-libmount
 	popd
 	markDone "util-linux"
 fi
 
-
-# 4.13. Install eudev.
+# 4.14. Install eudev.
 if ! isDone "eudev"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "eudev" ] && git clone --depth=1 "https://github.com/gentoo/eudev"
@@ -490,7 +506,7 @@ if ! isDone "eudev"; then
 	markDone "eudev"
 fi
 
-# 4.14. Install mtdev.
+# 4.15. Install mtdev.
 if ! isDone "mtdev"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "http://bitmath.org/code/mtdev/mtdev-${MTDEV_VERSION}.tar.gz"
@@ -503,7 +519,17 @@ if ! isDone "mtdev"; then
 	markDone "mtdev"
 fi
 
-# 4.15. Install libinput.
+# 4.15.5. Install libevdev
+if ! isDone "libevdev"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "libevdev" ] && git clone --depth=1 "https://gitlab.freedesktop.org/libevdev/libevdev.git"
+		mesonBuild "libevdev" -Dtests=disabled -Ddocumentation=disabled
+	popd
+	markDone "libevdev"
+fi
+
+
+# 4.16. Install libinput.
 if ! isDone "libinput"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://www.freedesktop.org/software/libinput/libinput-${LIBINPUT_VERSION}.tar.xz"
@@ -511,12 +537,12 @@ if ! isDone "libinput"; then
 			sed "s/, '-pedantic', '-Werror'//" -i "meson.build" || true
 			sed "s/-Werror/-Wno-error/" -i "meson.build" || true
 		popd
-		mesonBuild "libinput-${LIBINPUT_VERSION}" -Ddocumentation=false -Ddebug-gui=false -Dtests=false
+		mesonBuild "libinput-${LIBINPUT_VERSION}" -Ddocumentation=false -Ddebug-gui=false -Dtests=false -Dlibwacom=false
 	popd
 	markDone "libinput"
 fi
 
-# 4.16. Install libxkbcommon.
+# 4.17. Install libxkbcommon.
 if ! isDone "libxkbcommon"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://xkbcommon.org/download/libxkbcommon-${LIBXKBCOMMON_VERSION}.tar.xz"
@@ -525,16 +551,19 @@ if ! isDone "libxkbcommon"; then
 	markDone "libxkbcommon"
 fi
 
-# 4.17. Install pixman.
+# 4.18. Install pixman.
 if ! isDone "pixman"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://www.cairographics.org/releases/pixman-${PIXMAN_VERSION}.tar.gz"
-		mesonBuild "pixman-${PIXMAN_VERSION}" -Dlibpng=disabled -Dtests=false
+		pushd "pixman-${PIXMAN_VERSION}"
+			sed -e "s/subdir.*test.*//" -e "s/subdir.*demo.*//" -i "meson.build"
+		popd
+		mesonBuild "pixman-${PIXMAN_VERSION}" -Dlibpng=enabled -Dgtk=disabled
 	popd
 	markDone "pixman"
 fi
 
-# 4.18. Install wlroots.
+# 4.19. Install wlroots.
 if ! isDone "wlroots"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://github.com/swaywm/wlroots/releases/download/${WLROOTS_VERSION}/wlroots-${WLROOTS_VERSION}.tar.gz"
@@ -546,7 +575,7 @@ if ! isDone "wlroots"; then
 	markDone "wlroots"
 fi
 
-# 4.19. Install json-c.
+# 4.20. Install json-c.
 if ! isDone "json-c"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "json-c" ] && git clone --depth=1 "https://github.com/json-c/json-c.git"
@@ -556,7 +585,7 @@ if ! isDone "json-c"; then
 fi
 
 
-# 4.20. Install PCRE.
+# 4.21. Install PCRE.
 if ! isDone "pcre"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://ftp.pcre.org/pub/pcre/pcre-${PCRE_VERSION}.tar.gz"
@@ -565,7 +594,7 @@ if ! isDone "pcre"; then
 	markDone "pcre"
 fi
 
-# 4.21. Install glib.
+# 4.22. Install glib.
 if ! isDone "glib"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "glib" ] && git clone --depth=1 "https://gitlab.gnome.org/GNOME/glib"
@@ -593,7 +622,83 @@ if ! isDone "graphite-stage0"; then
 	popd
 	markDone "graphite-stage0"
 fi
+# 5.2. Freetype - Stage0
+if ! isDone "freetype-stage0"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://downloads.sourceforge.net/freetype/freetype-${FREETYPE_VERSION}.tar.xz"
+		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib " autotoolsBuild "freetype-${FREETYPE_VERSION}" --prefix=/usr --host="${MKSYSTEM_TARGET}" --build="aarch64-unknown-linux-gnu" --enable-freetype-config --with-brotli=no --with-png=yes --with-harfbuzz=no
+	popd
+	markDone "freetype-stage0"
+fi
 
+# 5.6. Fontconfig
+if ! isDone "fontconfig"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "fontconfig" ] && git clone --depth=1 "https://gitlab.freedesktop.org/fontconfig/fontconfig"
+		pushd "fontconfig"
+			echo "" > "conf.d/link_confs.py"
+		popd
+		MESON_INSTALL_DESTDIR_PREFIX="${MKSYSTEM_PREFIX}" mesonBuild "fontconfig" -Dtests=disabled -Ddoc=disabled -Dtools=disabled
+	popd
+	markDone "fontconfig"
+fi
+# 5.3. Harfbuzz
+if ! isDone "harfbuzz"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz"
+		mesonBuild "harfbuzz-${HARFBUZZ_VERSION}" -Dicu=disabled -Dtests=disabled -Dgraphite=enabled -Dfontconfig=enabled -Dcairo=disabled
+	popd
+	markDone "harfbuzz"
+fi
+# 5.4. Cairo
+if ! isDone "cairo"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "cairo" ] && git clone --depth=1 "https://github.com/freedesktop/cairo"
+		mesonBuild "cairo" -Dgl-backend=glesv3 -Dglesv3=enabled -Ddrm=enabled -Dtee=enabled -Dglib=enabled -Dpng=enabled -Dxcb=disabled -Dxml=disabled -Dzlib=disabled -Dgtk2-utils=disabled -Dopenvg=disabled -Dfontconfig=enabled -Dxlib=disabled -Dtests=disabled
+	popd
+	markDone "cairo"
+fi
+# 5.5. Freetype
+if ! isDone "freetype"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://downloads.sourceforge.net/freetype/freetype-${FREETYPE_VERSION}.tar.xz"
+		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib " autotoolsBuild "freetype-${FREETYPE_VERSION}" --prefix=/usr --host="${MKSYSTEM_TARGET}" --build="aarch64-unknown-linux-gnu" --enable-freetype-config --with-brotli=no --with-png=yes --with-harfbuzz=yes
+	popd
+	markDone "freetype"
+fi
+
+
+# 5.7. fribidi
+if ! isDone "fribidi"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "fribidi" ] && git clone --depth=1 "https://github.com/fribidi/fribidi"
+		mesonBuild "fribidi" -Ddocs=false
+	popd
+	markDone "fribidi"
+fi
+
+
+# 5.8. Pango
+if ! isDone "pango"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "pango" ] && git clone --depth=1 "https://gitlab.gnome.org/GNOME/pango"
+		mesonBuild "pango" -Dcairo=enabled -Dfreetype=enabled -Dgtk_doc=false -Dxft=disabled -Dlibthai=disabled
+	popd
+	markDone "pango"
+fi
+
+
+# 6. These numbers mean nothing btw.
+# 6.1. SwayWM!
+if ! isDone "sway"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://github.com/swaywm/sway/releases/download/${SWAY_VERSION}/sway-${SWAY_VERSION}.tar.gz"
+		pushd "sway-${SWAY_VERSION}"
+			sed -e "s/libsystemd/hiwejdhqwiudqwjduowhqduo/" -e "s/libelogind/ouewjoodiqjdoqijdoiqwjdwq/" -i "meson.build" || true
+		popd
+		mesonBuild "sway-${SWAY_VERSION}" -Dxwayland=disabled -Dgdk-pixbuf=disabled -Dtray=disabled
+	popd
+fi
 
 
 exit
