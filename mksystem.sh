@@ -53,7 +53,8 @@ GRAPHITE2_VERSION=1.3.14
 FREETYPE_VERSION=2.10.2
 HARFBUZZ_VERSION=2.7.2
 SWAY_VERSION=1.5
-
+XKEYBOARD_CONFIG_VERSION=2.30
+UTIL_LINUX_VERSION=2.36
 #VVER
 
 # Misc Functions
@@ -89,7 +90,7 @@ function mesonBuild() {
 	mkdir -p "${PKG}-build"
 	pushd "${PKG}-build"
 		PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" meson . "../${PKG}" --cross-file="${MKSYSTEM_MISC}/meson.cross" -Dprefix=/usr $@
-		ninja "${MAKEFLAGS}"
+		ninja -v "${MAKEFLAGS}"
 		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
 		ninja clean "${MAKEFLAGS}"
 	popd
@@ -270,7 +271,11 @@ if ! isDone "pkgconf"; then
 			--program-prefix="${MKSYSTEM_TARGET}-" \
 			--with-system-libdir="${MKSYSTEM_PREFIX}/usr/lib" \
 			--with-system-includedir="${MKSYSTEM_PREFIX}/usr/lib"
+		/usr/bin/echo -e "#!/bin/bash\n${MKSYSTEM_TARGET}-pkgconf --define-prefix \$@" > "${MKSYSTEM_MISC}/pkgconf"
+		chmod +x "${MKSYSTEM_MISC}/pkgconf"
 	popd
+
+
 	markDone "pkgconf"
 fi
 
@@ -410,7 +415,7 @@ ld = '${MKSYSTEM_TARGET}-gcc'
 strip = '${MKSYSTEM_TARGET}-strip'
 readelf = '${MKSYSTEM_TARGET}-readelf'
 objcopy = '${MKSYSTEM_TARGET}-objcopy'
-pkgconfig = '${MKSYSTEM_TARGET}-pkgconf'
+pkgconfig = '${MKSYSTEM_MISC}/pkgconf'
 [properties]
 c_args = ['$(echo "${MKSYSTEM_TARGET_CFLAGS}" | sed -r "s/\s+/','/g")', '-I${MKSYSTEM_PREFIX}/usr/include']
 c_link_args = ['-L${MKSYSTEM_PREFIX}/usr/lib']
@@ -478,8 +483,8 @@ fi
 # 4.13. Install util-linux's libs (libblkid, etc)
 if ! isDone "util-linux"; then
 	pushd "${MKSYSTEM_SOURCES}"
-		[ ! -d "util-linux" ] && git clone --depth=1 "https://github.com/karelzak/util-linux"
-			autotoolsBuild "util-linux" \
+		downloadExtract "https://mirrors.edge.kernel.org/pub/linux/utils/util-linux/v${UTIL_LINUX_VERSION}/util-linux-${UTIL_LINUX_VERSION}.tar.xz"
+			autotoolsBuild "util-linux-${UTIL_LINUX_VERSION}" \
 			--prefix=/usr \
 			--host="${MKSYSTEM_TARGET}" \
 			--without-readline \
@@ -546,10 +551,20 @@ fi
 if ! isDone "libxkbcommon"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://xkbcommon.org/download/libxkbcommon-${LIBXKBCOMMON_VERSION}.tar.xz"
-		mesonBuild "${LIBXKBCOMMON_VERSION}" -Ddefault-layout=uk -Denable-docs=false -Denable-xkbregistry=false -Denable-x11=false
+		mesonBuild "libxkbcommon-${LIBXKBCOMMON_VERSION}" -Ddefault-layout=gb -Denable-docs=false -Denable-xkbregistry=false -Denable-x11=false
 	popd
 	markDone "libxkbcommon"
 fi
+
+# Install xkeyboard-config
+if ! isDone "xkeyboard-config"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://www.x.org/pub/individual/data/xkeyboard-config/xkeyboard-config-${XKEYBOARD_CONFIG_VERSION}.tar.bz2"
+		autotoolsBuild "xkeyboard-config-${XKEYBOARD_CONFIG_VERSION}" --prefix=/usr --host="${MKSYSTEM_TARGET}"
+	popd
+	markDone "xkeyboard-config"
+fi
+
 
 # 4.18. Install pixman.
 if ! isDone "pixman"; then
@@ -643,12 +658,12 @@ if ! isDone "fontconfig"; then
 	markDone "fontconfig"
 fi
 # 5.3. Harfbuzz
-if ! isDone "harfbuzz"; then
+if ! isDone "harfbuzz-stage0"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz"
 		mesonBuild "harfbuzz-${HARFBUZZ_VERSION}" -Dicu=disabled -Dtests=disabled -Dgraphite=enabled -Dfontconfig=enabled -Dcairo=disabled
 	popd
-	markDone "harfbuzz"
+	markDone "harfbuzz-stage0"
 fi
 # 5.4. Cairo
 if ! isDone "cairo"; then
@@ -665,6 +680,14 @@ if ! isDone "freetype"; then
 		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib " autotoolsBuild "freetype-${FREETYPE_VERSION}" --prefix=/usr --host="${MKSYSTEM_TARGET}" --build="aarch64-unknown-linux-gnu" --enable-freetype-config --with-brotli=no --with-png=yes --with-harfbuzz=yes
 	popd
 	markDone "freetype"
+fi
+# 5.6. Harfbuzz
+if ! isDone "harfbuzz"; then
+  pushd "${MKSYSTEM_SOURCES}"
+    downloadExtract "https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz"
+    mesonBuild "harfbuzz-${HARFBUZZ_VERSION}" -Dicu=disabled -Dtests=disabled -Dgraphite=enabled -Dfontconfig=enabled -Dcairo=enabled
+  popd
+  markDone "harfbuzz"
 fi
 
 
