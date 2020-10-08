@@ -11,7 +11,7 @@ export PATH="/usr/lib/ccache/bin:${PATH}"
 # Env
 # CPU stuff
 MKSYSTEM_ARCH=armv8-a+crypto+crc
-MKSYSTEM_HOST=$(echo ${MACHTYPE} | sed "s/-[^-]*/-cross/")
+MKSYSTEM_HOST=aarch64
 MKSYSTEM_TARGET=aarch64-linux-musl
 MKSYSTEM_TARGET_CFLAGS="-Os -march=armv8-a+crc+simd+crypto -mcpu=cortex-a72+crc+simd+crypto -mlittle-endian -Wno-parentheses -Wno-error=redundant-decls"
 # Paths
@@ -65,7 +65,7 @@ function download() {
 }
 
 function extract() {
-	DIR="${2:-$(echo "$(basename "${1}")" | sed s/.tar.*$// | sed s/.t[gx]z$//)}"
+	DIR="${2:-$(basename "${1}" | sed s/.tar.*$// | sed s/.t[gx]z$//)}"
 	if [ ! -d "${DIR}" ]; then
 		bsdtar xf "$(basename "${1}")"
 	fi
@@ -89,7 +89,7 @@ function mesonBuild() {
 	shift
 	mkdir -p "${PKG}-build"
 	pushd "${PKG}-build"
-		PKG_CONFIG="${MKSYSTEM_MISC}/pkgconf" PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" meson . "../${PKG}" --cross-file="${MKSYSTEM_MISC}/meson.cross" -Dprefix="/usr" $@
+		PKG_CONFIG="${MKSYSTEM_MISC}/pkgconf" PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" meson . "../${PKG}" --cross-file="${MKSYSTEM_MISC}/meson.cross" -Dprefix="/usr" "$@"
 		ninja "${MAKEFLAGS}"
 		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
 		ninja clean "${MAKEFLAGS}"
@@ -106,7 +106,7 @@ function autotoolsBuild() {
 		[ ! -f "configure" ] && autoreconf -fi
 		CFLAGS_BAK="${CFLAGS}"
 		[ "${DEST}z" == "z" ] && export CFLAGS="${MKSYSTEM_TARGET_CFLAGS}" CXXFLAGS="${MKSYSTEM_TARGET_CFLAGS}"
-		PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" ./configure $@
+		PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" ./configure "$@"
 		unset CFLAGS
 		unset CXXFLAGS
 		CFLAGS="${CFLAGS_BAK}"
@@ -123,7 +123,7 @@ function autotoolsBuild() {
 function cmakeBuild() {
 	pushd "${1}"
 		shift
-		cmake -GNinja . -DCMAKE_SYSTEM_PROCESSOR="aarch64" -DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" -DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" -DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" -DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_INSTALL_PREFIX="/usr" $@
+		cmake -GNinja . -DCMAKE_SYSTEM_PROCESSOR="aarch64" -DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" -DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" -DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" -DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_INSTALL_PREFIX="/usr" "$@"
 		ninja "${MAKEFLAGS}"
 		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
 		ninja clean "${MAKEFLAGS}"
@@ -832,3 +832,4 @@ if ! isDone ""; then
 	popd
 	markDone ""
 fi
+
