@@ -31,7 +31,7 @@ export PATH="${MKSYSTEM_CCACHE_BIN}:${MKSYSTEM_CROSS_TOOLS}/bin:${MKSYSTEM_CROSS
 
 
 # Other
-MAKEFLAGS="-j5"
+MAKEFLAGS="-j6"
 
 # Versions
 LINUX_VERSION=5.8.13
@@ -89,9 +89,9 @@ function mesonBuild() {
 	shift
 	mkdir -p "${PKG}-build"
 	pushd "${PKG}-build"
-		PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" meson . "../${PKG}" --cross-file="${MKSYSTEM_MISC}/meson.cross" -Dprefix="${MKSYSTEM_PREFIX}/usr" $@
+		PKG_CONFIG="${MKSYSTEM_MISC}/pkgconf" PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" meson . "../${PKG}" --cross-file="${MKSYSTEM_MISC}/meson.cross" -Dprefix="/usr" $@
 		ninja "${MAKEFLAGS}"
-		ninja install "${MAKEFLAGS}"
+		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
 		ninja clean "${MAKEFLAGS}"
 	popd
 	rm -rf "${PKG}-build"
@@ -113,7 +113,7 @@ function autotoolsBuild() {
 		if [ "${DEST}z" != "z" ]; then 
 			DESTDIR="${DEST}" make install "${MAKEFLAGS}"
 		else
-			make install "${MAKEFLAGS}"
+			DESTDIR="${MKSYSTEM_PREFIX}" make install "${MAKEFLAGS}"
 		fi
 		make clean "${MAKEFLAGS}"
 	popd
@@ -124,7 +124,7 @@ function cmakeBuild() {
 		shift
 		cmake -GNinja . -DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" -DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" -DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" -DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_INSTALL_PREFIX="${MKSYSTEM_PREFIX}/usr" $@
 		ninja "${MAKEFLAGS}"
-		ninja install "${MAKEFLAGS}"
+		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
 		ninja clean "${MAKEFLAGS}"
 	popd
 }
@@ -218,6 +218,14 @@ if ! isDone "cross-gcc-static"; then
 	markDone "cross-gcc-static"
 fi
 
+#  Make some symlinks for ccache.
+if ! isDone "ccache-symlinks"; then
+  pushd "${MKSYSTEM_CCACHE_BIN}"
+    ln -s /usr/bin/ccache "${MKSYSTEM_TARGET}-gcc"
+    ln -s /usr/bin/ccache "${MKSYSTEM_TARGET}-g++"
+  popd
+  markDone "ccache-symlinks"
+fi
 
 # Install cross musl.
 if ! isDone "cross-musl"; then
@@ -272,6 +280,8 @@ if ! isDone "pkgconf"; then
 			--program-prefix="${MKSYSTEM_TARGET}-" \
 			--with-system-libdir="${MKSYSTEM_PREFIX}/usr/lib" \
 			--with-system-includedir="${MKSYSTEM_PREFIX}/usr/lib"
+		/usr/bin/echo -e "#!/bin/bash\n${MKSYSTEM_TARGET}-pkgconf --define-prefix --prefix-variable=${MKSYSTEM_PREFIX}/usr \$@" > "${MKSYSTEM_MISC}/pkgconf"
+		chmod +x "${MKSYSTEM_MISC}/pkgconf"
 	popd
 
 
@@ -325,14 +335,6 @@ fi
 
 # Start installing some basic stuff.
 
-#  Make some symlinks for ccache.
-if ! isDone "ccache-symlinks"; then
-	pushd "${MKSYSTEM_CCACHE_BIN}"
-		ln -s /usr/bin/ccache "${MKSYSTEM_TARGET}-gcc"
-		ln -s /usr/bin/ccache "${MKSYSTEM_TARGET}-g++"
-	popd
-	markDone "ccache-symlinks"
-fi
 
 # Create a cross compiler file for meson.
 if ! isDone "meson-cross-make"; then
@@ -349,7 +351,7 @@ ld = '${MKSYSTEM_TARGET}-gcc'
 strip = '${MKSYSTEM_TARGET}-strip'
 readelf = '${MKSYSTEM_TARGET}-readelf'
 objcopy = '${MKSYSTEM_TARGET}-objcopy'
-pkgconfig = '${MKSYSTEM_TARGET}-pkgconf'
+pkgconfig = '${MKSYSTEM_MISC}/pkgconf'
 [properties]
 c_args = common_flags + ['-I${MKSYSTEM_PREFIX}/usr/include']
 c_link_args = common_flags + ['-L${MKSYSTEM_PREFIX}/usr/lib']
@@ -410,7 +412,7 @@ fi
 if ! isDone "zlib-ng"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "zlib-ng" ] && git clone --depth=1 "https://github.com/zlib-ng/zlib-ng"
-		CC="${MKSYSTEM_TARGET}-gcc" autotoolsBuild "zlib-ng" --prefix="${MKSYSTEM_PREFIX}/usr" --zlib-compat
+		CC="${MKSYSTEM_TARGET}-gcc" autotoolsBuild "zlib-ng" --prefix="/usr" --zlib-compat
 	popd
 	markDone "zlib-ng"
 fi
@@ -419,7 +421,7 @@ fi
 if ! isDone "libffi"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://github.com/libffi/libffi/releases/download/v${LIBFFI_VERSION}/libffi-${LIBFFI_VERSION}.tar.gz"
-		autotoolsBuild "libffi-${LIBFFI_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}"
+		autotoolsBuild "libffi-${LIBFFI_VERSION}" --prefix="/usr" --host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "libffi"
 fi
@@ -428,7 +430,7 @@ fi
 if ! isDone "libpng"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://downloads.sourceforge.net/libpng/libpng-${LIBPNG_VERSION}.tar.xz"
-		CC="${MKSYSTEM_TARGET}-gcc ${MKSYSTEM_TARGET_CFLAGS}" autotoolsBuild "libpng-${LIBPNG_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}"
+		CC="${MKSYSTEM_TARGET}-gcc ${MKSYSTEM_TARGET_CFLAGS}" autotoolsBuild "libpng-${LIBPNG_VERSION}" --prefix="/usr" --host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "libpng"
 fi
@@ -464,7 +466,7 @@ fi
 if ! isDone "expat"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "expat" ] && git clone "https://github.com/libexpat/libexpat"
-		autotoolsBuild "libexpat/expat" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}"
+		autotoolsBuild "libexpat/expat" --prefix="/usr" --host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "expat"
 fi
@@ -487,7 +489,7 @@ if ! isDone "util-linux"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://mirrors.edge.kernel.org/pub/linux/utils/util-linux/v${UTIL_LINUX_VERSION}/util-linux-${UTIL_LINUX_VERSION}.tar.xz"
 			autotoolsBuild "util-linux-${UTIL_LINUX_VERSION}" \
-			--prefix="${MKSYSTEM_PREFIX}/usr" \
+			--prefix="/usr" \
 			--host="${MKSYSTEM_TARGET}" \
 			--without-readline \
 			--without-systemd \
@@ -503,7 +505,7 @@ if ! isDone "eudev"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "eudev" ] && git clone --depth=1 "https://github.com/gentoo/eudev"
 		autotoolsBuild "eudev" \
-			--prefix="${MKSYSTEM_PREFIX}/usr" \
+			--prefix="/usr" \
 			--host="${MKSYSTEM_TARGET}" \
 			--sysconfdir="/etc" \
 			--with-rootrundir="/run" \
@@ -521,7 +523,7 @@ if ! isDone "mtdev"; then
 			# It ships with way outdated autotools files, update needed!
 			autoreconf -fi
 		popd
-		autotoolsBuild "mtdev-${MTDEV_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}"
+		autotoolsBuild "mtdev-${MTDEV_VERSION}" --prefix="/usr" --host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "mtdev"
 fi
@@ -562,7 +564,7 @@ fi
 if ! isDone "xkeyboard-config"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://www.x.org/pub/individual/data/xkeyboard-config/xkeyboard-config-${XKEYBOARD_CONFIG_VERSION}.tar.bz2"
-		autotoolsBuild "xkeyboard-config-${XKEYBOARD_CONFIG_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}"
+		autotoolsBuild "xkeyboard-config-${XKEYBOARD_CONFIG_VERSION}" --prefix="/usr" --host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "xkeyboard-config"
 fi
@@ -606,7 +608,7 @@ fi
 if ! isDone "pcre"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://ftp.pcre.org/pub/pcre/pcre-${PCRE_VERSION}.tar.gz"
-		autotoolsBuild "pcre-${PCRE_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}"
+		autotoolsBuild "pcre-${PCRE_VERSION}" --prefix="/usr" --host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "pcre"
 fi
@@ -645,7 +647,7 @@ fi
 if ! isDone "freetype-stage0"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://downloads.sourceforge.net/freetype/freetype-${FREETYPE_VERSION}.tar.xz"
-		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib ${CFLAGS} " autotoolsBuild "freetype-${FREETYPE_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}" --build="aarch64-unknown-linux-gnu" --enable-freetype-config --with-brotli=no --with-png=no --with-harfbuzz=no
+		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib ${CFLAGS} " autotoolsBuild "freetype-${FREETYPE_VERSION}" --prefix="/usr" --host="${MKSYSTEM_TARGET}" --build="aarch64-unknown-linux-gnu" --enable-freetype-config --with-brotli=no --with-png=no --with-harfbuzz=no
 	popd
 	markDone "freetype-stage0"
 fi
@@ -666,7 +668,7 @@ fi
 if ! isDone "harfbuzz"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz"
-		PKG_CONFIG="${MKSYSTEM_TARGET}-pkgconf" LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib ${CFLAGS} " mesonBuild "harfbuzz-${HARFBUZZ_VERSION}" -Dicu=disabled -Dtests=disabled # -Dgraphite=enabled -Dfontconfig=enabled -Dcairo=disabled
+		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib ${CFLAGS} " mesonBuild "harfbuzz-${HARFBUZZ_VERSION}" -Dicu=disabled -Dtests=disabled # -Dgraphite=enabled -Dfontconfig=enabled -Dcairo=disabled
 	popd
 	markDone "harfbuzz"
 fi
@@ -674,7 +676,7 @@ fi
 if ! isDone "cairo"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "cairo" ] && git clone --depth=1 "https://github.com/freedesktop/cairo"
-		mesonBuild "cairo" -Dgl-backend=glesv3 -Dglesv3=enabled -Ddrm=enabled -Dtee=enabled -Dglib=enabled -Dpng=enabled -Dxcb=disabled -Dxml=disabled -Dzlib=enabled -Dgtk2-utils=disabled -Dopenvg=disabled -Dfontconfig=enabled -Dxlib=disabled -Dtests=disabled
+		mesonBuild "cairo" -Dgl-backend=glesv3 -Dglesv3=enabled -Ddrm=enabled -Dtee=enabled -Dglib=enabled -Dpng=enabled -Dxcb=disabled -Dxml=disabled -Dzlib=disabled -Dgtk2-utils=disabled -Dopenvg=disabled -Dfontconfig=enabled -Dxlib=disabled -Dtests=disabled
 	popd
 	markDone "cairo"
 fi
@@ -682,7 +684,7 @@ fi
 if ! isDone "freetype"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://downloads.sourceforge.net/freetype/freetype-${FREETYPE_VERSION}.tar.xz"
-		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib " autotoolsBuild "freetype-${FREETYPE_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}" --build="aarch64-unknown-linux-gnu" --enable-freetype-config --with-brotli=no --with-png=yes --with-harfbuzz=yes
+		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib " autotoolsBuild "freetype-${FREETYPE_VERSION}" --prefix="/usr" --host="${MKSYSTEM_TARGET}" --build="aarch64-unknown-linux-gnu" --enable-freetype-config --with-brotli=no --with-png=yes --with-harfbuzz=yes
 	popd
 	markDone "freetype"
 fi
