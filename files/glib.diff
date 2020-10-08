@@ -1,0 +1,77 @@
+diff --git a/gio/meson.build b/gio/meson.build
+index 37af9e4..f02cb61 100644
+--- a/gio/meson.build
++++ b/gio/meson.build
+@@ -1002,7 +1002,7 @@ if enable_systemtap
+ endif
+ 
+ subdir('fam')
+-if build_tests
++if false
+     subdir('tests')
+ endif
+ 
+diff --git a/glib/gnulib/meson.build b/glib/gnulib/meson.build
+index 38b530a..ee2ca1b 100644
+--- a/glib/gnulib/meson.build
++++ b/glib/gnulib/meson.build
+@@ -298,14 +298,14 @@ endif
+ if have_frexpl
+   subdir ('gl_cv_func_frexpl_works')
+ else
+-  gl_cv_func_frexpl_works = false
+-  gl_cv_func_frexpl_broken_beyond_repair = true
++  gl_cv_func_frexpl_works = true
++  gl_cv_func_frexpl_broken_beyond_repair = false
+ endif
+ 
+ if not gl_cv_func_frexp_works and gl_cv_func_frexp_broken_beyond_repair
+   error ('frexp() is missing or broken beyond repair, and we have nothing to replace it with')
+ endif
+-if not gl_cv_func_frexpl_works and gl_cv_func_frexpl_broken_beyond_repair
++if false
+   error ('frexpl() is missing or broken beyond repair, and we have nothing to replace it with')
+ endif
+ 
+diff --git a/glib/meson.build b/glib/meson.build
+index 7e0edb9..ea88dd4 100644
+--- a/glib/meson.build
++++ b/glib/meson.build
+@@ -432,11 +432,11 @@ if host_system == 'windows'
+       dependencies : [libglib_dep])
+   endif
+ else
+-  gtester = executable('gtester', 'gtester.c',
+-    install : true,
+-    c_args : ['-UG_DISABLE_ASSERT'],
+-    include_directories : configinc,
+-    dependencies : [libglib_dep])
++  #gtester = executable('gtester', 'gtester.c',
++  #  install : true,
++  #  c_args : ['-UG_DISABLE_ASSERT'],
++  #  include_directories : configinc,
++  #  dependencies : [libglib_dep])
+ endif
+ 
+ report_conf = configuration_data()
+@@ -479,6 +479,6 @@ if enable_systemtap
+   )
+ endif
+ 
+-if build_tests
++if false
+   subdir('tests')
+ endif
+diff --git a/meson.build b/meson.build
+index b27ce9b..2c78411 100644
+--- a/meson.build
++++ b/meson.build
+@@ -2295,7 +2295,7 @@ subdir('gthread')
+ subdir('gmodule')
+ subdir('gio')
+ subdir('fuzzing')
+-if build_tests
++if false
+   subdir('tests')
+ endif
+ 

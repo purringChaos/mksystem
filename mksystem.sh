@@ -31,7 +31,7 @@ export PATH="${MKSYSTEM_CCACHE_BIN}:${MKSYSTEM_CROSS_TOOLS}/bin:${MKSYSTEM_CROSS
 
 
 # Other
-MAKEFLAGS="-j$(nproc)"
+MAKEFLAGS="-j5"
 
 # Versions
 LINUX_VERSION=5.8.13
@@ -55,7 +55,7 @@ HARFBUZZ_VERSION=2.7.2
 SWAY_VERSION=1.5
 XKEYBOARD_CONFIG_VERSION=2.30
 UTIL_LINUX_VERSION=2.36
-#VVER
+# VVER
 
 # Misc Functions
 function download() {
@@ -89,9 +89,9 @@ function mesonBuild() {
 	shift
 	mkdir -p "${PKG}-build"
 	pushd "${PKG}-build"
-		PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" meson . "../${PKG}" --cross-file="${MKSYSTEM_MISC}/meson.cross" -Dprefix=/usr $@
-		ninja -v "${MAKEFLAGS}"
-		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
+		PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" meson . "../${PKG}" --cross-file="${MKSYSTEM_MISC}/meson.cross" -Dprefix="${MKSYSTEM_PREFIX}/usr" $@
+		ninja "${MAKEFLAGS}"
+		ninja install "${MAKEFLAGS}"
 		ninja clean "${MAKEFLAGS}"
 	popd
 	rm -rf "${PKG}-build"
@@ -110,10 +110,10 @@ function autotoolsBuild() {
 		unset CFLAGS
 		CFLAGS="${CFLAGS_BAK}"
 		make "${MAKEFLAGS}"
-		if [ "${DEST}z" == "z" ]; then 
-			DESTDIR="${MKSYSTEM_PREFIX}" make install "${MAKEFLAGS}"
-		else
+		if [ "${DEST}z" != "z" ]; then 
 			DESTDIR="${DEST}" make install "${MAKEFLAGS}"
+		else
+			make install "${MAKEFLAGS}"
 		fi
 		make clean "${MAKEFLAGS}"
 	popd
@@ -122,14 +122,14 @@ function autotoolsBuild() {
 function cmakeBuild() {
 	pushd "${1}"
 		shift
-		cmake -GNinja . -DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" -DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" -DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" -DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_INSTALL_PREFIX=/usr $@
+		cmake -GNinja . -DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" -DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" -DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" -DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_INSTALL_PREFIX="${MKSYSTEM_PREFIX}/usr" $@
 		ninja "${MAKEFLAGS}"
-		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
+		ninja install "${MAKEFLAGS}"
 		ninja clean "${MAKEFLAGS}"
 	popd
 }
 
-# 1. Make all needed folders.
+# Make all needed folders.
 
 mkdir -p "${MKSYSTEM_ROOT}"
 mkdir -p "${MKSYSTEM_STATE}" "${MKSYSTEM_STATE}/installed"
@@ -143,9 +143,9 @@ if ! ls "${MKSYSTEM_CROSS_TOOLS_TARGET}/usr"; then
 	ln -sfv "${MKSYSTEM_CROSS_TOOLS_TARGET}" "${MKSYSTEM_CROSS_TOOLS_TARGET}/usr"
 fi
 
-# 2. Create the cross compilation tools.
+# Create the cross compilation tools.
 
-# 2.1. Install the sanitized kernel headers.
+# Install the sanitized kernel headers.
 if ! isDone "cross-kernel-headers"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		download "https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-${LINUX_VERSION}.tar.xz" 
@@ -157,7 +157,7 @@ if ! isDone "cross-kernel-headers"; then
 	markDone "cross-kernel-headers"
 fi
 
-# 2.2. Install cross binutils.
+# Install cross binutils.
 
 if ! isDone "cross-binutils"; then
 	pushd "${MKSYSTEM_SOURCES}"
@@ -178,7 +178,7 @@ if ! isDone "cross-binutils"; then
 	markDone "cross-binutils"
 fi
 
-# 2.3 Install cross gcc static.
+# Install cross gcc static.
 if ! isDone "cross-gcc-static"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "ftp://ftp.mirrorservice.org/sites/sourceware.org/pub/gcc/releases/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz" 
@@ -219,7 +219,7 @@ if ! isDone "cross-gcc-static"; then
 fi
 
 
-# 2.4. Install cross musl.
+# Install cross musl.
 if ! isDone "cross-musl"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "http://musl.libc.org/releases/musl-${MUSL_VERSION}.tar.gz" 
@@ -228,7 +228,7 @@ if ! isDone "cross-musl"; then
 	markDone "cross-musl"
 fi
 
-# 2.5 Install cross gcc.
+# Install cross gcc.
 if ! isDone "cross-gcc"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "ftp://ftp.mirrorservice.org/sites/sourceware.org/pub/gcc/releases/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz"
@@ -262,17 +262,16 @@ if ! isDone "cross-gcc"; then
 	markDone "cross-gcc"
 fi
 
-# 2.6 Install pkgconf
+
+# Install pkgconf
 if ! isDone "pkgconf"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://distfiles.dereferenced.org/pkgconf/pkgconf-${PKGCONF_VERSION}.tar.xz"
-		DEST="${MKSYSTEM_CROSS_TOOLS_TARGET}" autotoolsBuild "pkgconf-${PKGCONF_VERSION}" \
-			--prefix=/usr \
+		 DEST="${MKSYSTEM_CROSS_TOOLS_TARGET}" autotoolsBuild "pkgconf-${PKGCONF_VERSION}" \
+			--prefix="/usr" \
 			--program-prefix="${MKSYSTEM_TARGET}-" \
 			--with-system-libdir="${MKSYSTEM_PREFIX}/usr/lib" \
 			--with-system-includedir="${MKSYSTEM_PREFIX}/usr/lib"
-		/usr/bin/echo -e "#!/bin/bash\n${MKSYSTEM_TARGET}-pkgconf --define-prefix \$@" > "${MKSYSTEM_MISC}/pkgconf"
-		chmod +x "${MKSYSTEM_MISC}/pkgconf"
 	popd
 
 
@@ -280,9 +279,9 @@ if ! isDone "pkgconf"; then
 fi
 
 
-# 3. Start setting up the prefix.
+# Start setting up the prefix.
 
-# 3.1. Create paths.
+# Create paths.
 if ! isDone "create-prefix-paths"; then
 	pushd "${MKSYSTEM_PREFIX}"
 		mkdir -p usr/{bin,include,lib,share,src}
@@ -307,7 +306,7 @@ if ! isDone "create-prefix-paths"; then
 	markDone "create-prefix-paths"
 fi
 
-# 3.2. Create prefix files.
+# Create prefix files.
 if ! isDone "create-prefix-files"; then
 	pushd "${MKSYSTEM_PREFIX}"
 		cp -f "${MKSYSTEM_FILES}/passwd" etc/passwd
@@ -316,7 +315,7 @@ if ! isDone "create-prefix-files"; then
 	markDone "create-prefix-files"
 fi
 
-# 3.3. Copy over the built GCC libs (libgcc, libstdc++, etc)
+# Copy over the built GCC libs (libgcc, libstdc++, etc)
 if ! isDone "copy-gcc-libs"; then
 	pushd "${MKSYSTEM_PREFIX}"
 		cp -v "${MKSYSTEM_CROSS_TOOLS_TARGET}/lib64/"* "lib/"
@@ -324,9 +323,9 @@ if ! isDone "copy-gcc-libs"; then
 	markDone "copy-gcc-libs"
 fi
 
-# 4. Start installing some basic stuff.
+# Start installing some basic stuff.
 
-# 4.1. Make some symlinks for ccache.
+#  Make some symlinks for ccache.
 if ! isDone "ccache-symlinks"; then
 	pushd "${MKSYSTEM_CCACHE_BIN}"
 		ln -s /usr/bin/ccache "${MKSYSTEM_TARGET}-gcc"
@@ -335,16 +334,48 @@ if ! isDone "ccache-symlinks"; then
 	markDone "ccache-symlinks"
 fi
 
-# 4.2. Install proper final musl.
+# Create a cross compiler file for meson.
+if ! isDone "meson-cross-make"; then
+	pushd "${MKSYSTEM_MISC}"
+		cat > meson.cross <<EOF
+[constants]
+common_flags = ['$(echo "${MKSYSTEM_TARGET_CFLAGS}" | sed -r "s/\s+/','/g")']
+[binaries]
+c = '${MKSYSTEM_TARGET}-gcc'
+cpp = '${MKSYSTEM_TARGET}-g++'
+ar = '${MKSYSTEM_TARGET}-gcc-ar'
+nm = '${MKSYSTEM_TARGET}-nm'
+ld = '${MKSYSTEM_TARGET}-gcc'
+strip = '${MKSYSTEM_TARGET}-strip'
+readelf = '${MKSYSTEM_TARGET}-readelf'
+objcopy = '${MKSYSTEM_TARGET}-objcopy'
+pkgconfig = '${MKSYSTEM_TARGET}-pkgconf'
+[properties]
+c_args = common_flags + ['-I${MKSYSTEM_PREFIX}/usr/include']
+c_link_args = common_flags + ['-L${MKSYSTEM_PREFIX}/usr/lib']
+cpp_args = common_flags + ['-I${MKSYSTEM_PREFIX}/usr/include']
+cpp_link_args = common_flags + ['-L${MKSYSTEM_PREFIX}/usr/lib']
+[host_machine]
+system = 'linux'
+cpu_family = 'aarch64'
+cpu = 'armv8-a'
+endian = 'little'
+EOF
+	popd
+	markDone "meson-cross-make"
+fi
+
+
+#  Install proper final musl.
 if ! isDone "final-musl"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "http://musl.libc.org/releases/musl-${MUSL_VERSION}.tar.gz"
-		autotoolsBuild "musl-${MUSL_VERSION}" CROSS_COMPILE="${MKSYSTEM_TARGET}-" --prefix=/usr --target="${MKSYSTEM_TARGET}"
+		DEST="${MKSYSTEM_PREFIX}" autotoolsBuild "musl-${MUSL_VERSION}" CROSS_COMPILE="${MKSYSTEM_TARGET}-" --prefix="/usr" --target="${MKSYSTEM_TARGET}"
 	popd
 	markDone "final-musl"
 fi
 
-# 4.3. Install busybox.
+# Install busybox.
 if ! isDone "busybox"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://busybox.net/downloads/busybox-${BUSYBOX_VERSION}.tar.bz2"
@@ -366,7 +397,7 @@ if ! isDone "busybox"; then
 	markDone "busybox"
 fi
 
-# 4.4 Install iana-etc for services and protocols naming.
+# Install iana-etc for services and protocols naming.
 if ! isDone "iana-etc"; then
 	pushd "${MKSYSTEM_PREFIX}"
 		cp -f "${MKSYSTEM_FILES}/services" etc/services
@@ -375,63 +406,34 @@ if ! isDone "iana-etc"; then
 	markDone "iana-etc"
 fi
 
-# 4.5. Install zlib-ng for zlib/DEFLATE compression.
+# Install zlib-ng for zlib/DEFLATE compression.
 if ! isDone "zlib-ng"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "zlib-ng" ] && git clone --depth=1 "https://github.com/zlib-ng/zlib-ng"
-		CC="${MKSYSTEM_TARGET}-gcc" autotoolsBuild "zlib-ng" --prefix="/usr" --zlib-compat
+		CC="${MKSYSTEM_TARGET}-gcc" autotoolsBuild "zlib-ng" --prefix="${MKSYSTEM_PREFIX}/usr" --zlib-compat
 	popd
 	markDone "zlib-ng"
 fi
 
-# 4.6. Install libffi for cross-language calls.
+# Install libffi for cross-language calls.
 if ! isDone "libffi"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://github.com/libffi/libffi/releases/download/v${LIBFFI_VERSION}/libffi-${LIBFFI_VERSION}.tar.gz"
-		autotoolsBuild "libffi-${LIBFFI_VERSION}" --prefix=/usr --host="${MKSYSTEM_TARGET}"
+		autotoolsBuild "libffi-${LIBFFI_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "libffi"
 fi
 
-# 4.7. Install libpng.
+# Install libpng.
 if ! isDone "libpng"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://downloads.sourceforge.net/libpng/libpng-${LIBPNG_VERSION}.tar.xz"
-		CC="${MKSYSTEM_TARGET}-gcc ${MKSYSTEM_TARGET_CFLAGS}" autotoolsBuild "libpng-${LIBPNG_VERSION}" --prefix=/usr --host="${MKSYSTEM_TARGET}"
+		CC="${MKSYSTEM_TARGET}-gcc ${MKSYSTEM_TARGET_CFLAGS}" autotoolsBuild "libpng-${LIBPNG_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "libpng"
 fi
 
-# 4.8. Create a cross compiler file for meson.
-if ! isDone "meson-cross-make"; then
-	pushd "${MKSYSTEM_MISC}"
-		cat > meson.cross <<EOF
-[binaries]
-c = '${MKSYSTEM_TARGET}-gcc'
-cpp = '${MKSYSTEM_TARGET}-g++'
-ar = '${MKSYSTEM_TARGET}-gcc-ar'
-nm = '${MKSYSTEM_TARGET}-nm'
-ld = '${MKSYSTEM_TARGET}-gcc'
-strip = '${MKSYSTEM_TARGET}-strip'
-readelf = '${MKSYSTEM_TARGET}-readelf'
-objcopy = '${MKSYSTEM_TARGET}-objcopy'
-pkgconfig = '${MKSYSTEM_MISC}/pkgconf'
-[properties]
-c_args = ['$(echo "${MKSYSTEM_TARGET_CFLAGS}" | sed -r "s/\s+/','/g")', '-I${MKSYSTEM_PREFIX}/usr/include']
-c_link_args = ['-L${MKSYSTEM_PREFIX}/usr/lib']
-cpp_args = ['$(echo "${MKSYSTEM_TARGET_CFLAGS}" | sed -r "s/\s+/','/g")', '-I${MKSYSTEM_PREFIX}/usr/include']
-cpp_link_args = ['-L${MKSYSTEM_PREFIX}/usr/lib']
-[host_machine]
-system = 'linux'
-cpu_family = 'aarch64'
-cpu = 'armv8-a'
-endian = 'little'
-EOF
-	popd
-	markDone "meson-cross-make"
-fi
-
-# 4.9. Install wayland.
+# Install wayland.
 if ! isDone "wayland"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "wayland" ] && git clone --depth=1 "https://github.com/wayland-project/wayland"
@@ -445,7 +447,7 @@ if ! isDone "wayland"; then
 	markDone "wayland"
 fi
 
-# 4.10. Install libdrm
+#. Install libdrm
 if ! isDone "libdrm"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://dri.freedesktop.org/libdrm/libdrm-${LIBDRM_VERSION}.tar.xz"
@@ -458,16 +460,16 @@ if ! isDone "libdrm"; then
 	markDone "libdrm"
 fi
 
-# 4.11. Install expat.
+#. Install expat.
 if ! isDone "expat"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "expat" ] && git clone "https://github.com/libexpat/libexpat"
-		autotoolsBuild "libexpat/expat" --prefix=/usr --host="${MKSYSTEM_TARGET}"
+		autotoolsBuild "libexpat/expat" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "expat"
 fi
 
-# 4.12. Install mesa!
+#. Install mesa!
 if ! isDone "mesa"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "mesa" ] && git clone --depth=1 "https://gitlab.freedesktop.org/mesa/mesa"
@@ -480,12 +482,12 @@ if ! isDone "mesa"; then
 	markDone "mesa"
 fi
 
-# 4.13. Install util-linux's libs (libblkid, etc)
+#. Install util-linux's libs (libblkid, etc)
 if ! isDone "util-linux"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://mirrors.edge.kernel.org/pub/linux/utils/util-linux/v${UTIL_LINUX_VERSION}/util-linux-${UTIL_LINUX_VERSION}.tar.xz"
 			autotoolsBuild "util-linux-${UTIL_LINUX_VERSION}" \
-			--prefix=/usr \
+			--prefix="${MKSYSTEM_PREFIX}/usr" \
 			--host="${MKSYSTEM_TARGET}" \
 			--without-readline \
 			--without-systemd \
@@ -496,22 +498,22 @@ if ! isDone "util-linux"; then
 	markDone "util-linux"
 fi
 
-# 4.14. Install eudev.
+#. Install eudev.
 if ! isDone "eudev"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "eudev" ] && git clone --depth=1 "https://github.com/gentoo/eudev"
 		autotoolsBuild "eudev" \
-			--prefix=/usr \
+			--prefix="${MKSYSTEM_PREFIX}/usr" \
 			--host="${MKSYSTEM_TARGET}" \
-			--sysconfdir=/etc \
-			--with-rootrundir=/run \
+			--sysconfdir="/etc" \
+			--with-rootrundir="/run" \
 			--disable-manpages \
-			--disable-hwdb --disable-kmod
+			--disable-hwdb --disable-kmod --with-rootprefix="${MKSYSTEM_PREFIX}/usr" --sbindir="${MKSYSTEM_PREFIX}/usr/bin" --bindir="${MKSYSTEM_PREFIX}/usr/bin" --sysconfdir="${MKSYSTEM_PREFIX}/etc"  --enable-split-usr
 	popd
 	markDone "eudev"
 fi
 
-# 4.15. Install mtdev.
+#. Install mtdev.
 if ! isDone "mtdev"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "http://bitmath.org/code/mtdev/mtdev-${MTDEV_VERSION}.tar.gz"
@@ -519,12 +521,12 @@ if ! isDone "mtdev"; then
 			# It ships with way outdated autotools files, update needed!
 			autoreconf -fi
 		popd
-		autotoolsBuild "mtdev-${MTDEV_VERSION}" --prefix=/usr --host="${MKSYSTEM_TARGET}"
+		autotoolsBuild "mtdev-${MTDEV_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "mtdev"
 fi
 
-# 4.15.5. Install libevdev
+#.5. Install libevdev
 if ! isDone "libevdev"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "libevdev" ] && git clone --depth=1 "https://gitlab.freedesktop.org/libevdev/libevdev.git"
@@ -534,7 +536,7 @@ if ! isDone "libevdev"; then
 fi
 
 
-# 4.16. Install libinput.
+#. Install libinput.
 if ! isDone "libinput"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://www.freedesktop.org/software/libinput/libinput-${LIBINPUT_VERSION}.tar.xz"
@@ -547,7 +549,7 @@ if ! isDone "libinput"; then
 	markDone "libinput"
 fi
 
-# 4.17. Install libxkbcommon.
+#. Install libxkbcommon.
 if ! isDone "libxkbcommon"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://xkbcommon.org/download/libxkbcommon-${LIBXKBCOMMON_VERSION}.tar.xz"
@@ -560,13 +562,13 @@ fi
 if ! isDone "xkeyboard-config"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://www.x.org/pub/individual/data/xkeyboard-config/xkeyboard-config-${XKEYBOARD_CONFIG_VERSION}.tar.bz2"
-		autotoolsBuild "xkeyboard-config-${XKEYBOARD_CONFIG_VERSION}" --prefix=/usr --host="${MKSYSTEM_TARGET}"
+		autotoolsBuild "xkeyboard-config-${XKEYBOARD_CONFIG_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "xkeyboard-config"
 fi
 
 
-# 4.18. Install pixman.
+#. Install pixman.
 if ! isDone "pixman"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://www.cairographics.org/releases/pixman-${PIXMAN_VERSION}.tar.gz"
@@ -578,7 +580,7 @@ if ! isDone "pixman"; then
 	markDone "pixman"
 fi
 
-# 4.19. Install wlroots.
+#. Install wlroots.
 if ! isDone "wlroots"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://github.com/swaywm/wlroots/releases/download/${WLROOTS_VERSION}/wlroots-${WLROOTS_VERSION}.tar.gz"
@@ -590,7 +592,7 @@ if ! isDone "wlroots"; then
 	markDone "wlroots"
 fi
 
-# 4.20. Install json-c.
+#. Install json-c.
 if ! isDone "json-c"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "json-c" ] && git clone --depth=1 "https://github.com/json-c/json-c.git"
@@ -600,33 +602,35 @@ if ! isDone "json-c"; then
 fi
 
 
-# 4.21. Install PCRE.
+#. Install PCRE.
 if ! isDone "pcre"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://ftp.pcre.org/pub/pcre/pcre-${PCRE_VERSION}.tar.gz"
-		autotoolsBuild "pcre-${PCRE_VERSION}" --prefix=/usr --host="${MKSYSTEM_TARGET}"
+		autotoolsBuild "pcre-${PCRE_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "pcre"
 fi
 
-# 4.22. Install glib.
+#. Install glib.
 if ! isDone "glib"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "glib" ] && git clone --depth=1 "https://gitlab.gnome.org/GNOME/glib"
 		pushd "glib"
-			sed "s/gl_cv_func_frexpl_works = false/gl_cv_func_frexpl_works = true/" -i "glib/gnulib/meson.build" || true
-			sed "s/gl_cv_func_frexpl_broken_beyond_repair = true/gl_cv_func_frexpl_broken_beyond_repair = false/" -i "glib/gnulib/meson.build" || true
-			sed "s/not gl_cv_func_frexpl_works and gl_cv_func_frexpl_broken_beyond_repair/false/" -i "glib/gnulib/meson.build" || true
-			sed "s/if build_tests/if false/" -i "meson.build" -i "gio/meson.build" || true
-			sed "s/if not meson.is_cross_build\(\)/if true/" -i "meson.build" || true
+			#sed "s/gl_cv_func_frexpl_works = false/gl_cv_func_frexpl_works = true/" -i "glib/gnulib/meson.build" || true
+			#sed "s/gl_cv_func_frexpl_broken_beyond_repair = true/gl_cv_func_frexpl_broken_beyond_repair = false/" -i "glib/gnulib/meson.build" || true
+			#sed "s/not gl_cv_func_frexpl_works and gl_cv_func_frexpl_broken_beyond_repair/false/" -i "glib/gnulib/meson.build" || true
+			#sed "s/if build_tests/if false/" -i "meson.build" -i "gio/meson.build" || true
+			#sed "s/if build_tests/if false/" -i "meson.build" -i "glib/meson.build" || true
+			#sed "s/if not meson.is_cross_build\(\)/if true/" -i "meson.build" || true
+			git apply "${MKSYSTEM_FILES}/glib.diff"
 		popd
-		mesonBuild "glib" -Dman=false -Dgtk_doc=false -Dlibelf=disabled
+		mesonBuild "glib" -Dman=false -Dgtk_doc=false -Dlibelf=disabled -Dinternal_pcre=true
 	popd
 	markDone "glib"
 fi
 
-# 5. Font Stuff.. (there has been circular depends for years at this point ":\(" )
-# 5.1. Graphite2 - Stage0
+# Font Stuff.. (there has been circular depends for years at this point ":\(" )
+# Graphite2 - Stage0
 if ! isDone "graphite-stage0"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://github.com/silnrsi/graphite/releases/download/${GRAPHITE2_VERSION}/graphite2-${GRAPHITE2_VERSION}.tgz"
@@ -637,61 +641,54 @@ if ! isDone "graphite-stage0"; then
 	popd
 	markDone "graphite-stage0"
 fi
-# 5.2. Freetype - Stage0
+# Freetype - Stage0
 if ! isDone "freetype-stage0"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://downloads.sourceforge.net/freetype/freetype-${FREETYPE_VERSION}.tar.xz"
-		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib " autotoolsBuild "freetype-${FREETYPE_VERSION}" --prefix=/usr --host="${MKSYSTEM_TARGET}" --build="aarch64-unknown-linux-gnu" --enable-freetype-config --with-brotli=no --with-png=yes --with-harfbuzz=no
+		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib ${CFLAGS} " autotoolsBuild "freetype-${FREETYPE_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}" --build="aarch64-unknown-linux-gnu" --enable-freetype-config --with-brotli=no --with-png=no --with-harfbuzz=no
 	popd
 	markDone "freetype-stage0"
 fi
 
-# 5.6. Fontconfig
+# Fontconfig
 if ! isDone "fontconfig"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "fontconfig" ] && git clone --depth=1 "https://gitlab.freedesktop.org/fontconfig/fontconfig"
 		pushd "fontconfig"
-			echo "" > "conf.d/link_confs.py"
+			/usr/bin/echo -e "#!/bin/python3\nprint('hello world!')" > "conf.d/link_confs.py"
+			chmod +x "conf.d/link_confs.py"
 		popd
-		MESON_INSTALL_DESTDIR_PREFIX="${MKSYSTEM_PREFIX}" mesonBuild "fontconfig" -Dtests=disabled -Ddoc=disabled -Dtools=disabled
+		 mesonBuild "fontconfig" -Dtests=disabled -Ddoc=disabled -Dtools=disabled
 	popd
 	markDone "fontconfig"
 fi
-# 5.3. Harfbuzz
-if ! isDone "harfbuzz-stage0"; then
+# Harfbuzz
+if ! isDone "harfbuzz"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz"
-		mesonBuild "harfbuzz-${HARFBUZZ_VERSION}" -Dicu=disabled -Dtests=disabled -Dgraphite=enabled -Dfontconfig=enabled -Dcairo=disabled
+		PKG_CONFIG="${MKSYSTEM_TARGET}-pkgconf" LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib ${CFLAGS} " mesonBuild "harfbuzz-${HARFBUZZ_VERSION}" -Dicu=disabled -Dtests=disabled # -Dgraphite=enabled -Dfontconfig=enabled -Dcairo=disabled
 	popd
-	markDone "harfbuzz-stage0"
+	markDone "harfbuzz"
 fi
-# 5.4. Cairo
+# Cairo
 if ! isDone "cairo"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "cairo" ] && git clone --depth=1 "https://github.com/freedesktop/cairo"
-		mesonBuild "cairo" -Dgl-backend=glesv3 -Dglesv3=enabled -Ddrm=enabled -Dtee=enabled -Dglib=enabled -Dpng=enabled -Dxcb=disabled -Dxml=disabled -Dzlib=disabled -Dgtk2-utils=disabled -Dopenvg=disabled -Dfontconfig=enabled -Dxlib=disabled -Dtests=disabled
+		mesonBuild "cairo" -Dgl-backend=glesv3 -Dglesv3=enabled -Ddrm=enabled -Dtee=enabled -Dglib=enabled -Dpng=enabled -Dxcb=disabled -Dxml=disabled -Dzlib=enabled -Dgtk2-utils=disabled -Dopenvg=disabled -Dfontconfig=enabled -Dxlib=disabled -Dtests=disabled
 	popd
 	markDone "cairo"
 fi
-# 5.5. Freetype
+# Freetype
 if ! isDone "freetype"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://downloads.sourceforge.net/freetype/freetype-${FREETYPE_VERSION}.tar.xz"
-		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib " autotoolsBuild "freetype-${FREETYPE_VERSION}" --prefix=/usr --host="${MKSYSTEM_TARGET}" --build="aarch64-unknown-linux-gnu" --enable-freetype-config --with-brotli=no --with-png=yes --with-harfbuzz=yes
+		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib " autotoolsBuild "freetype-${FREETYPE_VERSION}" --prefix="${MKSYSTEM_PREFIX}/usr" --host="${MKSYSTEM_TARGET}" --build="aarch64-unknown-linux-gnu" --enable-freetype-config --with-brotli=no --with-png=yes --with-harfbuzz=yes
 	popd
 	markDone "freetype"
 fi
-# 5.6. Harfbuzz
-if ! isDone "harfbuzz"; then
-  pushd "${MKSYSTEM_SOURCES}"
-    downloadExtract "https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz"
-    mesonBuild "harfbuzz-${HARFBUZZ_VERSION}" -Dicu=disabled -Dtests=disabled -Dgraphite=enabled -Dfontconfig=enabled -Dcairo=enabled
-  popd
-  markDone "harfbuzz"
-fi
 
 
-# 5.7. fribidi
+# fribidi
 if ! isDone "fribidi"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "fribidi" ] && git clone --depth=1 "https://github.com/fribidi/fribidi"
@@ -701,7 +698,7 @@ if ! isDone "fribidi"; then
 fi
 
 
-# 5.8. Pango
+# Pango
 if ! isDone "pango"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "pango" ] && git clone --depth=1 "https://gitlab.gnome.org/GNOME/pango"
@@ -711,8 +708,7 @@ if ! isDone "pango"; then
 fi
 
 
-# 6. These numbers mean nothing btw.
-# 6.1. SwayWM!
+# SwayWM!
 if ! isDone "sway"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://github.com/swaywm/sway/releases/download/${SWAY_VERSION}/sway-${SWAY_VERSION}.tar.gz"
@@ -721,12 +717,13 @@ if ! isDone "sway"; then
 		popd
 		mesonBuild "sway-${SWAY_VERSION}" -Dxwayland=disabled -Dgdk-pixbuf=disabled -Dtray=disabled
 	popd
+	markDone sway
 fi
 
 
 exit
 
-#EEND
+# EEND
 
 
 if ! isDone ""; then
