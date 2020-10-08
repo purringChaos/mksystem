@@ -105,15 +105,16 @@ function autotoolsBuild() {
 		[ ! -f "configure" ] && [ -f "autogen.sh" ] && ./autogen.sh
 		[ ! -f "configure" ] && autoreconf -fi
 		CFLAGS_BAK="${CFLAGS}"
-		[ "${DEST}z" == "z" ] && export CFLAGS="${MKSYSTEM_TARGET_CFLAGS}"
+		[ "${DEST}z" == "z" ] && export CFLAGS="${MKSYSTEM_TARGET_CFLAGS}" CXXFLAGS="${MKSYSTEM_TARGET_CFLAGS}"
 		PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" ./configure $@
 		unset CFLAGS
+		unset CXXFLAGS
 		CFLAGS="${CFLAGS_BAK}"
 		make "${MAKEFLAGS}"
 		if [ "${DEST}z" != "z" ]; then 
 			DESTDIR="${DEST}" make install "${MAKEFLAGS}"
 		else
-			DESTDIR="${MKSYSTEM_PREFIX}" make install "${MAKEFLAGS}"
+			DESTDIR="${MKSYSTEM_PREFIX}" make install "${MAKEFLAGS}" V=1
 		fi
 		make clean "${MAKEFLAGS}"
 	popd
@@ -122,7 +123,7 @@ function autotoolsBuild() {
 function cmakeBuild() {
 	pushd "${1}"
 		shift
-		cmake -GNinja . -DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" -DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" -DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" -DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_INSTALL_PREFIX="${MKSYSTEM_PREFIX}/usr" $@
+		cmake -GNinja . -DCMAKE_SYSTEM_PROCESSOR="aarch64" -DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" -DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" -DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" -DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_INSTALL_PREFIX="/usr" $@
 		ninja "${MAKEFLAGS}"
 		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
 		ninja clean "${MAKEFLAGS}"
@@ -374,6 +375,10 @@ if ! isDone "final-musl"; then
 		downloadExtract "http://musl.libc.org/releases/musl-${MUSL_VERSION}.tar.gz"
 		DEST="${MKSYSTEM_PREFIX}" autotoolsBuild "musl-${MUSL_VERSION}" CROSS_COMPILE="${MKSYSTEM_TARGET}-" --prefix="/usr" --target="${MKSYSTEM_TARGET}"
 	popd
+	ln -sf "${MKSYSTEM_PREFIX}/usr/lib/libc.so" "${MKSYSTEM_PREFIX}/lib/pthread.so"
+  ln -sf "${MKSYSTEM_PREFIX}/usr/lib/libc.so" "${MKSYSTEM_PREFIX}/lib/pthread.so.1"
+  ln -sf "${MKSYSTEM_PREFIX}/usr/lib/libc.so" "${MKSYSTEM_PREFIX}/lib/pthread.so.0"
+
 	markDone "final-musl"
 fi
 
@@ -415,6 +420,14 @@ if ! isDone "zlib-ng"; then
 		CC="${MKSYSTEM_TARGET}-gcc" autotoolsBuild "zlib-ng" --prefix="/usr" --zlib-compat
 	popd
 	markDone "zlib-ng"
+fi
+
+# install lzo
+if ! isDone "lzo"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz"
+		autotoolsBuild "lzo-2.10" --prefix="/usr" --host="${MKSYSTEM_TARGET}"
+	popd
 fi
 
 # Install libffi for cross-language calls.
@@ -676,7 +689,7 @@ fi
 if ! isDone "cairo"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "cairo" ] && git clone --depth=1 "https://github.com/freedesktop/cairo"
-		mesonBuild "cairo" -Dgl-backend=glesv3 -Dglesv3=enabled -Ddrm=enabled -Dtee=enabled -Dglib=enabled -Dpng=enabled -Dxcb=disabled -Dxml=disabled -Dzlib=disabled -Dgtk2-utils=disabled -Dopenvg=disabled -Dfontconfig=enabled -Dxlib=disabled -Dtests=disabled
+		mesonBuild "cairo" -Dgl-backend=glesv3 -Dglesv3=enabled -Ddrm=enabled -Dtee=enabled -Dglib=enabled -Dpng=enabled -Dxcb=disabled -Dxml=disabled -Dzlib=enabled -Dgtk2-utils=disabled -Dopenvg=disabled -Dfontconfig=enabled -Dxlib=disabled -Dtests=disabled
 	popd
 	markDone "cairo"
 fi
@@ -722,6 +735,97 @@ if ! isDone "sway"; then
 	markDone sway
 fi
 
+# Unifont
+if ! isDone "unifont"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		download "http://unifoundry.com/pub/unifont/unifont-13.0.03/font-builds/unifont-13.0.03.ttf"
+		mkdir -p "${MKSYSTEM_PREFIX}/usr/share/fonts/TTF"
+		cp "unifont-13.0.03.ttf" "${MKSYSTEM_PREFIX}/usr/share/fonts/TTF"
+	popd
+	markDone "unifont"
+fi
+
+if ! isDone "libjpeg-turbo"; then
+  pushd "${MKSYSTEM_SOURCES}"
+    downloadExtract "https://downloads.sourceforge.net/libjpeg-turbo/libjpeg-turbo-2.0.5.tar.gz"
+    cmakeBuild "libjpeg-turbo-2.0.5" -DCMAKE_INSTALL_DEFAULT_LIBDIR=lib
+  popd
+  markDone libjpeg-turbo
+fi
+
+if ! isDone "dbus"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://dbus.freedesktop.org/releases/dbus/dbus-1.12.20.tar.gz"
+		autotoolsBuild "dbus-1.12.20" --prefix="/usr" --host="${MKSYSTEM_TARGET}" \
+            --sysconfdir=/etc                    \
+            --localstatedir=/var                 \
+            --disable-doxygen-docs               \
+            --disable-xml-docs                   \
+            --with-console-auth-dir=/run/console \
+						--disable-systemd --without-x        \
+            --with-system-pid-file=/run/dbus/pid \
+            --with-system-socket=/run/dbus/system_bus_socket
+	popd
+	markDone dbus
+fi
+
+if ! isDone "at-spi2-core"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://ftp.gnome.org/pub/gnome/sources/at-spi2-core/2.38/at-spi2-core-2.38.0.tar.xz"
+		mesonBuild "at-spi2-core-2.38.0" -Dx11=no
+	popd
+	markDone "at-spi2-core"
+fi
+
+if ! isDone "atk"; then
+  pushd "${MKSYSTEM_SOURCES}"
+    downloadExtract "http://ftp.gnome.org/pub/gnome/sources/atk/2.36/atk-2.36.0.tar.xz"
+    mesonBuild "atk-2.36.0" -Dintrospection=false
+  popd
+  markDone "atk"
+fi
+
+if ! isDone "at-spi2-atk"; then
+  pushd "${MKSYSTEM_SOURCES}"
+    downloadExtract "http://ftp.gnome.org/pub/gnome/sources/at-spi2-atk/2.38/at-spi2-atk-2.38.0.tar.xz"
+    mesonBuild "at-spi2-atk-2.38.0" -Dtests=false
+  popd
+  markDone "at-spi2-atk"
+fi
+
+if ! isDone "libepoxy"; then
+  pushd "${MKSYSTEM_SOURCES}"
+    downloadExtract "https://github.com/anholt/libepoxy/releases/download/1.5.4/libepoxy-1.5.4.tar.xz"
+    mesonBuild "libepoxy-1.5.4" -Dx11=false
+  popd
+  markDone "libepoxy"
+fi
+
+
+if ! isDone "gdk-pixbuf"; then
+  pushd "${MKSYSTEM_SOURCES}"
+    downloadExtract "http://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.40/gdk-pixbuf-2.40.0.tar.xz"
+    mesonBuild "gdk-pixbuf-2.40.0" -Dx11=false -Dgir=false -Dtiff=false -Dman=false -Ddocs=false
+  popd
+  markDone "gdk-pixbuf"
+fi
+
+if ! isDone "gtk"; then
+  pushd "${MKSYSTEM_SOURCES}"
+    downloadExtract "http://ftp.gnome.org/pub/gnome/sources/gtk+/3.24/gtk+-3.24.23.tar.xz"
+		mesonBuild "gtk+-3.24.23" -Dintrospection=false  -Dinstalled_tests=true -Dx11_backend=false -Dbroadway_backend=true -Dprint_backends=file
+  popd
+  markDone "gtk"
+fi
+
+
+
+# http://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.40/gdk-pixbuf-2.40.0.tar.xz
+
+#https://github.com/anholt/libepoxy/releases/download/1.5.4/libepoxy-1.5.4.tar.xz
+#https://downloads.sourceforge.net/libjpeg-turbo/libjpeg-turbo-2.0.5.tar.gz
+
+
 
 exit
 
@@ -730,11 +834,8 @@ exit
 
 if ! isDone ""; then
 	pushd "${MKSYSTEM_SOURCES}"
-		download ""
-		extract "" ""
-	pushd ""
-
-	popd
+		downloadExtract ""
+		mesonBuild ""
 	popd
 	markDone ""
 fi
