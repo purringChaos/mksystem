@@ -219,13 +219,13 @@ if ! isDone "cross-gcc-static"; then
 	markDone "cross-gcc-static"
 fi
 
-#  Make some symlinks for ccache.
+# Make some symlinks for ccache.
 if ! isDone "ccache-symlinks"; then
-  pushd "${MKSYSTEM_CCACHE_BIN}"
-    ln -s /usr/bin/ccache "${MKSYSTEM_TARGET}-gcc"
-    ln -s /usr/bin/ccache "${MKSYSTEM_TARGET}-g++"
-  popd
-  markDone "ccache-symlinks"
+	pushd "${MKSYSTEM_CCACHE_BIN}"
+		ln -s /usr/bin/ccache "${MKSYSTEM_TARGET}-gcc"
+		ln -s /usr/bin/ccache "${MKSYSTEM_TARGET}-g++"
+	popd
+	markDone "ccache-symlinks"
 fi
 
 # Install cross musl.
@@ -369,16 +369,15 @@ EOF
 fi
 
 
-#  Install proper final musl.
+# Install proper final musl.
 if ! isDone "final-musl"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "http://musl.libc.org/releases/musl-${MUSL_VERSION}.tar.gz"
 		DEST="${MKSYSTEM_PREFIX}" autotoolsBuild "musl-${MUSL_VERSION}" CROSS_COMPILE="${MKSYSTEM_TARGET}-" --prefix="/usr" --target="${MKSYSTEM_TARGET}"
 	popd
 	ln -sf "${MKSYSTEM_PREFIX}/usr/lib/libc.so" "${MKSYSTEM_PREFIX}/lib/pthread.so"
-  ln -sf "${MKSYSTEM_PREFIX}/usr/lib/libc.so" "${MKSYSTEM_PREFIX}/lib/pthread.so.1"
-  ln -sf "${MKSYSTEM_PREFIX}/usr/lib/libc.so" "${MKSYSTEM_PREFIX}/lib/pthread.so.0"
-
+	ln -sf "${MKSYSTEM_PREFIX}/usr/lib/libc.so" "${MKSYSTEM_PREFIX}/lib/pthread.so.1"
+	ln -sf "${MKSYSTEM_PREFIX}/usr/lib/libc.so" "${MKSYSTEM_PREFIX}/lib/pthread.so.0"
 	markDone "final-musl"
 fi
 
@@ -523,7 +522,7 @@ if ! isDone "eudev"; then
 			--sysconfdir="/etc" \
 			--with-rootrundir="/run" \
 			--disable-manpages \
-			--disable-hwdb --disable-kmod --with-rootprefix="${MKSYSTEM_PREFIX}/usr" --sbindir="${MKSYSTEM_PREFIX}/usr/bin" --bindir="${MKSYSTEM_PREFIX}/usr/bin" --sysconfdir="${MKSYSTEM_PREFIX}/etc"  --enable-split-usr
+			--disable-hwdb --disable-kmod --with-rootprefix="${MKSYSTEM_PREFIX}/usr" --sbindir="${MKSYSTEM_PREFIX}/usr/bin" --bindir="${MKSYSTEM_PREFIX}/usr/bin" --sysconfdir="${MKSYSTEM_PREFIX}/etc" --enable-split-usr
 	popd
 	markDone "eudev"
 fi
@@ -746,25 +745,28 @@ if ! isDone "unifont"; then
 fi
 
 if ! isDone "libjpeg-turbo"; then
-  pushd "${MKSYSTEM_SOURCES}"
-    downloadExtract "https://downloads.sourceforge.net/libjpeg-turbo/libjpeg-turbo-2.0.5.tar.gz"
-    cmakeBuild "libjpeg-turbo-2.0.5" -DCMAKE_INSTALL_DEFAULT_LIBDIR=lib
-  popd
-  markDone libjpeg-turbo
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://downloads.sourceforge.net/libjpeg-turbo/libjpeg-turbo-2.0.5.tar.gz"
+		cmakeBuild "libjpeg-turbo-2.0.5" -DCMAKE_INSTALL_DEFAULT_LIBDIR=lib
+	popd
+	markDone libjpeg-turbo
 fi
 
 if ! isDone "dbus"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://dbus.freedesktop.org/releases/dbus/dbus-1.12.20.tar.gz"
-		autotoolsBuild "dbus-1.12.20" --prefix="/usr" --host="${MKSYSTEM_TARGET}" \
-            --sysconfdir=/etc                    \
-            --localstatedir=/var                 \
-            --disable-doxygen-docs               \
-            --disable-xml-docs                   \
-            --with-console-auth-dir=/run/console \
-						--disable-systemd --without-x        \
-            --with-system-pid-file=/run/dbus/pid \
-            --with-system-socket=/run/dbus/system_bus_socket
+		autotoolsBuild "dbus-1.12.20" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}" \
+			--sysconfdir=/etc \
+			--localstatedir=/var \
+			--disable-doxygen-docs \
+			--disable-xml-docs \
+			--with-console-auth-dir=/run/console \
+			--disable-systemd \
+			--without-x \
+			--with-system-pid-file=/run/dbus/pid \
+			--with-system-socket=/run/dbus/system_bus_socket
 	popd
 	markDone dbus
 fi
@@ -778,58 +780,49 @@ if ! isDone "at-spi2-core"; then
 fi
 
 if ! isDone "atk"; then
-  pushd "${MKSYSTEM_SOURCES}"
-    downloadExtract "http://ftp.gnome.org/pub/gnome/sources/atk/2.36/atk-2.36.0.tar.xz"
-    mesonBuild "atk-2.36.0" -Dintrospection=false
-  popd
-  markDone "atk"
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://ftp.gnome.org/pub/gnome/sources/atk/2.36/atk-2.36.0.tar.xz"
+		mesonBuild "atk-2.36.0" -Dintrospection=false
+	popd
+	markDone "atk"
 fi
 
 if ! isDone "at-spi2-atk"; then
-  pushd "${MKSYSTEM_SOURCES}"
-    downloadExtract "http://ftp.gnome.org/pub/gnome/sources/at-spi2-atk/2.38/at-spi2-atk-2.38.0.tar.xz"
-    mesonBuild "at-spi2-atk-2.38.0" -Dtests=false
-  popd
-  markDone "at-spi2-atk"
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://ftp.gnome.org/pub/gnome/sources/at-spi2-atk/2.38/at-spi2-atk-2.38.0.tar.xz"
+		mesonBuild "at-spi2-atk-2.38.0" -Dtests=false
+	popd
+	markDone "at-spi2-atk"
 fi
 
 if ! isDone "libepoxy"; then
-  pushd "${MKSYSTEM_SOURCES}"
-    downloadExtract "https://github.com/anholt/libepoxy/releases/download/1.5.4/libepoxy-1.5.4.tar.xz"
-    mesonBuild "libepoxy-1.5.4" -Dx11=false
-  popd
-  markDone "libepoxy"
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://github.com/anholt/libepoxy/releases/download/1.5.4/libepoxy-1.5.4.tar.xz"
+	mesonBuild "libepoxy-1.5.4" -Dx11=false
+	popd
+	markDone "libepoxy"
 fi
 
 
 if ! isDone "gdk-pixbuf"; then
-  pushd "${MKSYSTEM_SOURCES}"
-    downloadExtract "http://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.40/gdk-pixbuf-2.40.0.tar.xz"
-    mesonBuild "gdk-pixbuf-2.40.0" -Dx11=false -Dgir=false -Dtiff=false -Dman=false -Ddocs=false
-  popd
-  markDone "gdk-pixbuf"
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.40/gdk-pixbuf-2.40.0.tar.xz"
+		mesonBuild "gdk-pixbuf-2.40.0" -Dx11=false -Dgir=false -Dtiff=false -Dman=false -Ddocs=false
+	popd
+	markDone "gdk-pixbuf"
 fi
 
 if ! isDone "gtk"; then
-  pushd "${MKSYSTEM_SOURCES}"
-    downloadExtract "http://ftp.gnome.org/pub/gnome/sources/gtk+/3.24/gtk+-3.24.23.tar.xz"
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://ftp.gnome.org/pub/gnome/sources/gtk+/3.24/gtk+-3.24.23.tar.xz"
 		mesonBuild "gtk+-3.24.23" -Dintrospection=false  -Dinstalled_tests=true -Dx11_backend=false -Dbroadway_backend=true -Dprint_backends=file
-  popd
-  markDone "gtk"
+	popd
+	markDone "gtk"
 fi
 
-
-
-# http://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.40/gdk-pixbuf-2.40.0.tar.xz
-
-#https://github.com/anholt/libepoxy/releases/download/1.5.4/libepoxy-1.5.4.tar.xz
-#https://downloads.sourceforge.net/libjpeg-turbo/libjpeg-turbo-2.0.5.tar.gz
-
-
+# EEND
 
 exit
-
-# EEND
 
 
 if ! isDone ""; then
