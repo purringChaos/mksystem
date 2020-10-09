@@ -50,6 +50,7 @@ LIBPNG_VERSION=1.6.37
 PIXMAN_VERSION=0.40.0
 WLROOTS_VERSION=0.11.0
 PCRE_VERSION=8.44
+PCRE2_VERSION=10.35
 GRAPHITE2_VERSION=1.3.14
 FREETYPE_VERSION=2.10.2
 HARFBUZZ_VERSION=2.7.2
@@ -648,6 +649,16 @@ if ! isDone "pcre"; then
 	markDone "pcre"
 fi
 
+if ! isDone "pcre2"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://ftp.pcre.org/pub/pcre/pcre2-${PCRE2_VERSION}.tar.gz"
+		autotoolsBuild "pcre2-${PCRE2_VERSION}" --prefix="/usr" --host="${MKSYSTEM_TARGET}"
+	popd
+	markDone "pcre2"
+fi
+
+
+
 #. Install glib.
 if ! isDone "glib"; then
 	pushd "${MKSYSTEM_SOURCES}"
@@ -830,7 +841,7 @@ fi
 if ! isDone "gdk-pixbuf"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "http://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.40/gdk-pixbuf-2.40.0.tar.xz"
-		mesonBuild "gdk-pixbuf-2.40.0" -Dx11=false -Dgir=false -Dtiff=false -Dman=false -Ddocs=false
+		mesonBuild "gdk-pixbuf-2.40.0" -Dx11=false -Dgir=false -Dtiff=false -Dman=false -Ddocs=false 
 	popd
 	markDone "gdk-pixbuf"
 fi
@@ -871,7 +882,29 @@ if ! isDone "neofetch"; then
 	markDone "neofetch"
 fi
 
+
+if ! isDone "vte"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "vte" ] && git clone --depth=1 "https://gitlab.gnome.org/GNOME/vte.git"
+		pushd "vte"
+			git apply "${MKSYSTEM_FILES}/vte.patch" || true
+		popd
+		mesonBuild "vte" -Dsixel=true -Dgnutls=false -Dglade=false -Dicu=false -D_systemd=false -Dvapi=false -Ddocs=false -Dgir=false
+	popd
+	markDone "vte"
+fi
+
+if ! isDone "chaos"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "chaos" ] && git clone --depth=1 "https://github.com/purringChaos/chaos"
+		mesonBuild "chaos"
+	popd
+	markDone "chaos"
+fi
+
 # EEND
+
+
 
 exit
 

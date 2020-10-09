@@ -1,0 +1,28 @@
+diff --git a/src/missing.hh b/src/missing.hh
+index 0742270..e4ffaf2 100644
+--- a/src/missing.hh
++++ b/src/missing.hh
+@@ -19,6 +19,11 @@
+ 
+ /* NOTE: This file must be included *after all other includes*. */
+ 
++#ifndef W_EXITCODE
++#define W_EXITCODE(ret, sig) ((ret) << 8 | (sig))
++#endif
++
++
+ /* NSIG isn't in POSIX, so if it doesn't exist use this here. See bug #759196 */
+ #ifndef NSIG
+ #define NSIG (8 * sizeof(sigset_t))
+diff --git a/src/widget.cc b/src/widget.cc
+index c4dfc53..0765bda 100644
+--- a/src/widget.cc
++++ b/src/widget.cc
+@@ -21,6 +21,7 @@
+ #include "widget.hh"
+ 
+ #include <sys/wait.h> // for W_EXITCODE
++#include "missing.hh" // for W_EXITCODE on non-glibc systems
+ 
+ #include <exception>
+ #include <new>
