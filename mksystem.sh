@@ -871,31 +871,6 @@ if ! isDone "neofetch"; then
 	markDone "neofetch"
 fi
 
-if ! isDone "rust-toolchain"; then
-	pushd "${MKSYSTEM_SOURCES}"
-		rustup toolchain install nightly
-		rustup target add "aarch64-unknown-linux-musl"
-		echo -e "[target.aarch64-unknown-linux-musl]\nlinker = \"${MKSYSTEM_TARGET}-gcc\"" > "${HOME}/.cargo/config"
-	popd
-	# markDone "rust-toolchain"
-fi
-
-if ! isDone "alacritty"; then
-	pushd "${MKSYSTEM_SOURCES}"
-		downloadExtract "https://github.com/alacritty/alacritty/archive/v0.5.0.tar.gz" "alacritty-0.5.0.tar.gz" "alacritty-0.5.0"
-		pushd "alacritty-0.5.0"
-			/usr/bin/echo -e "[workspace]\nmembers = [\"alacritty\",\"alacritty_terminal\",]\n[profile.release]\nlto = false\ndebug = 1\nincremental = false" > Cargo.toml
-			pushd "alacritty"
-				PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" PKG_CONFIG="${MKSYSTEM_MISC}/pkgconf" RUSTFLAGS="-v -C link-arg=--sysroot=${MKSYSTEM_PREFIX} -Clto=off -C linker=${MKSYSTEM_TARGET}-gcc" cargo build --target "aarch64-unknown-linux-musl" -vv --release --no-default-features --features "wayland"
-			popd
-			cp "target/aarch64-unknown-linux-musl/release/alacritty"	"${MKSYSTEM_PREFIX}/usr/bin/alacritty"
-			mkdir -p "${MKSYSTEM_PREFIX}/etc/alacritty"
-			cp "alacritty.yml" "${MKSYSTEM_PREFIX}/etc/alacritty/alacritty.yml"
-		popd
-	popd
-	markDone "alacritty"
-fi
-
 # EEND
 
 exit
