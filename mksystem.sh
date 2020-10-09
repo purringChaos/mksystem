@@ -2,7 +2,8 @@
 set -e
 set -x
 set -o pipefail
-shopt -s extglob
+
+#shopt -s extglob
 
 ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
@@ -27,7 +28,7 @@ MKSYSTEM_MISC="${MKSYSTEM_ROOT}/misc"
 
 MKSYSTEM_TARGET_CFLAGS="${MKSYSTEM_TARGET_CFLAGS} -I${MKSYSTEM_PREFIX}/usr/include --sysroot=${MKSYSTEM_PREFIX}"
 
-export PATH="${MKSYSTEM_CCACHE_BIN}:${MKSYSTEM_CROSS_TOOLS}/bin:${MKSYSTEM_CROSS_TOOLS_TARGET}/bin:${PATH}"
+export PATH="${MKSYSTEM_CCACHE_BIN}:${MKSYSTEM_CROSS_TOOLS}/bin:${MKSYSTEM_CROSS_TOOLS_TARGET}/bin:$HOME/.cargo/bin:${PATH}"
 
 
 # Other
@@ -59,7 +60,7 @@ UTIL_LINUX_VERSION=2.36
 
 # Misc Functions
 function download() {
-	if [ ! -f "$(basename "${1}")" ]; then
+	if [ ! -f "$(basename "${2:-$(basename "$1")}")" ]; then
 		aria2c -x4 -s4 "${1}"
 	fi
 }
@@ -72,8 +73,8 @@ function extract() {
 }
 
 function downloadExtract() {
-	download "${1}"
-	extract "${1}"
+	download "${1}" "${2}"
+	extract "${2:-${1}}" "${3}"
 }
 
 function markDone() {
@@ -114,7 +115,7 @@ function autotoolsBuild() {
 		if [ "${DEST}z" != "z" ]; then 
 			DESTDIR="${DEST}" make install "${MAKEFLAGS}"
 		else
-			DESTDIR="${MKSYSTEM_PREFIX}" make install "${MAKEFLAGS}" V=1
+			DESTDIR="${MKSYSTEM_PREFIX}" make install DESTDIR="${MKSYSTEM_PREFIX}" "${MAKEFLAGS}" V=1
 		fi
 		make clean "${MAKEFLAGS}"
 	popd
@@ -123,7 +124,19 @@ function autotoolsBuild() {
 function cmakeBuild() {
 	pushd "${1}"
 		shift
-		cmake -GNinja . -DCMAKE_SYSTEM_PROCESSOR="aarch64" -DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" -DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" -DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" -DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" -DCMAKE_INSTALL_PREFIX="/usr" "$@"
+		cmake -GNinja . \
+			-DCMAKE_SYSTEM_PROCESSOR="aarch64" \
+			-DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" \
+			-DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" \
+			-DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" \
+			-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+			-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+			-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+			-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" \
+			-DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" \
+			-DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" \
+			-DCMAKE_INSTALL_PREFIX="/usr" \
+		"$@"
 		ninja "${MAKEFLAGS}"
 		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
 		ninja clean "${MAKEFLAGS}"
@@ -329,10 +342,20 @@ fi
 # Copy over the built GCC libs (libgcc, libstdc++, etc)
 if ! isDone "copy-gcc-libs"; then
 	pushd "${MKSYSTEM_PREFIX}"
-		cp -v "${MKSYSTEM_CROSS_TOOLS_TARGET}/lib64/"* "lib/"
+		find "${MKSYSTEM_CROSS_TOOLS_TARGET}/lib64/" -maxdepth 1 -exec cp -r {} "lib/" \;
 	popd
 	markDone "copy-gcc-libs"
 fi
+
+if ! isDone "make-unknown-symlinks"; then
+	pushd "${MKSYSTEM_CROSS_TOOLS}/bin"
+		ln -s "${MKSYSTEM_TARGET}-ld" "aarch64-unknown-linux-musl-ld"
+		ln -s "${MKSYSTEM_TARGET}-gcc" "aarch64-unknown-linux-musl-gcc"
+		ln -s "${MKSYSTEM_TARGET}-g++" "aarch64-unknown-linux-musl-g++"
+	popd
+	markDone "make-unknown-symlinks"
+fi
+
 
 # Start installing some basic stuff.
 
@@ -818,6 +841,59 @@ if ! isDone "gtk"; then
 		mesonBuild "gtk+-3.24.23" -Dintrospection=false  -Dinstalled_tests=true -Dx11_backend=false -Dbroadway_backend=true -Dprint_backends=file
 	popd
 	markDone "gtk"
+fi
+
+if ! isDone "bash"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://ftp.gnu.org/gnu/bash/bash-5.0.tar.gz"
+		autotoolsBuild "bash-5.0" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}" --without-bash-malloc 
+	popd
+	markDone "bash"
+fi
+
+if ! isDone "distro-files"; then
+	cp "${MKSYSTEM_FILES}/os-release" "${MKSYSTEM_PREFIX}/etc/os-release"
+	cp "${MKSYSTEM_FILES}/lsb-release" "${MKSYSTEM_PREFIX}/etc/lsb-release"
+	markDone "distro-files"
+fi 
+
+
+if ! isDone "neofetch"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		download "https://github.com/dylanaraps/neofetch/raw/master/neofetch"
+		cp "neofetch" "${MKSYSTEM_PREFIX}/usr/bin/neofetch"
+		chmod +x "${MKSYSTEM_PREFIX}/usr/bin/neofetch"
+		mkdir -p "${MKSYSTEM_PREFIX}/etc/neofetch"
+		cp "${MKSYSTEM_FILES}/neofetch_config" "${MKSYSTEM_PREFIX}/etc/neofetch/config"
+	popd
+	markDone "neofetch"
+fi
+
+if ! isDone "rust-toolchain"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		rustup toolchain install nightly
+		rustup target add "aarch64-unknown-linux-musl"
+		echo -e "[target.aarch64-unknown-linux-musl]\nlinker = \"${MKSYSTEM_TARGET}-gcc\"" > "${HOME}/.cargo/config"
+	popd
+	# markDone "rust-toolchain"
+fi
+
+if ! isDone "alacritty"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://github.com/alacritty/alacritty/archive/v0.5.0.tar.gz" "alacritty-0.5.0.tar.gz" "alacritty-0.5.0"
+		pushd "alacritty-0.5.0"
+			/usr/bin/echo -e "[workspace]\nmembers = [\"alacritty\",\"alacritty_terminal\",]\n[profile.release]\nlto = false\ndebug = 1\nincremental = false" > Cargo.toml
+			pushd "alacritty"
+				PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" PKG_CONFIG="${MKSYSTEM_MISC}/pkgconf" RUSTFLAGS="-v -C link-arg=--sysroot=${MKSYSTEM_PREFIX} -Clto=off -C linker=${MKSYSTEM_TARGET}-gcc" cargo build --target "aarch64-unknown-linux-musl" -vv --release --no-default-features --features "wayland"
+			popd
+			cp "target/aarch64-unknown-linux-musl/release/alacritty"	"${MKSYSTEM_PREFIX}/usr/bin/alacritty"
+			mkdir -p "${MKSYSTEM_PREFIX}/etc/alacritty"
+			cp "alacritty.yml" "${MKSYSTEM_PREFIX}/etc/alacritty/alacritty.yml"
+		popd
+	popd
+	markDone "alacritty"
 fi
 
 # EEND
