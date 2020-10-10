@@ -57,6 +57,11 @@ HARFBUZZ_VERSION=2.7.2
 SWAY_VERSION=1.5
 XKEYBOARD_CONFIG_VERSION=2.30
 UTIL_LINUX_VERSION=2.36
+ALSA_LIB_VERSION=1.2.3.2
+LIBOGG_VERSION=1.3.4
+LIBVORBIS_VERSION=1.3.7
+FLAC_VERSION=1.3.3
+LIBSNDFILE_VERSION=1.0.28
 # VVER
 
 # Misc Functions
@@ -112,7 +117,7 @@ function autotoolsBuild() {
 		unset CFLAGS
 		unset CXXFLAGS
 		CFLAGS="${CFLAGS_BAK}"
-		make "${MAKEFLAGS}"
+		make "${MAKEFLAGS}" V=1
 		if [ "${DEST}z" != "z" ]; then 
 			DESTDIR="${DEST}" make install "${MAKEFLAGS}"
 		else
@@ -122,23 +127,31 @@ function autotoolsBuild() {
 	popd
 }
 
+
+function cmakeConfigure() {
+	cmake -GNinja . \
+		-DCMAKE_SYSTEM_PROCESSOR="aarch64" \
+		-DCMAKE_BUILD_TYPE='Release' \
+		-DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" \
+		-DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" \
+		-DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" \
+		-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+		-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+		-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+		-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" \
+		-DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" \
+		-DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" \
+		-DCMAKE_INSTALL_PREFIX="/usr" \
+		-DCMAKE_BUILD_SHARED_LIBS=on \
+		"$@"
+}
+
+
 function cmakeBuild() {
 	pushd "${1}"
 		shift
-		cmake -GNinja . \
-			-DCMAKE_SYSTEM_PROCESSOR="aarch64" \
-			-DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" \
-			-DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" \
-			-DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" \
-			-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
-			-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-			-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-			-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" \
-			-DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" \
-			-DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" \
-			-DCMAKE_INSTALL_PREFIX="/usr" \
-		"$@"
-		ninja "${MAKEFLAGS}"
+		cmakeConfigure "$@"
+		ninja "${MAKEFLAGS}" -v
 		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
 		ninja clean "${MAKEFLAGS}"
 	popd
@@ -693,7 +706,7 @@ fi
 if ! isDone "freetype-stage0"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://downloads.sourceforge.net/freetype/freetype-${FREETYPE_VERSION}.tar.xz"
-		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib ${CFLAGS} " autotoolsBuild "freetype-${FREETYPE_VERSION}" --prefix="/usr" --host="${MKSYSTEM_TARGET}" --build="aarch64-unknown-linux-gnu" --enable-freetype-config --with-brotli=no --with-png=no --with-harfbuzz=no
+		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib ${MKSYSTEM_TARGET_CFLAGS} " autotoolsBuild "freetype-${FREETYPE_VERSION}" --prefix="/usr" --host="${MKSYSTEM_TARGET}" --build="aarch64-unknown-linux-gnu" --enable-freetype-config --with-brotli=no --with-png=no --with-harfbuzz=no
 	popd
 	markDone "freetype-stage0"
 fi
@@ -714,7 +727,7 @@ fi
 if ! isDone "harfbuzz"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz"
-		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib ${CFLAGS} " mesonBuild "harfbuzz-${HARFBUZZ_VERSION}" -Dicu=disabled -Dtests=disabled # -Dgraphite=enabled -Dfontconfig=enabled -Dcairo=disabled
+		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib ${MKSYSTEM_TARGET_CFLAGS} " mesonBuild "harfbuzz-${HARFBUZZ_VERSION}" -Dicu=disabled -Dtests=disabled # -Dgraphite=enabled -Dfontconfig=enabled -Dcairo=disabled
 	popd
 	markDone "harfbuzz"
 fi
@@ -902,10 +915,147 @@ if ! isDone "chaos"; then
 	markDone "chaos"
 fi
 
+if ! isDone "nasm-symlink"; then
+	ln -sf "/usr/bin/nasm" "${MKSYSTEM_CROSS_TOOLS}/bin/${MKSYSTEM_TARGET}-nasm"
+	markDone "nasm-symlink"
+fi
+
+
+if ! isDone "alsa-lib"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "ftp://ftp.alsa-project.org/pub/lib/alsa-lib-${ALSA_LIB_VERSION}.tar.bz2"
+		autotoolsBuild "alsa-lib-${ALSA_LIB_VERSION}" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}"
+		sed 's/ssize_t/size_t/g' "${MKSYSTEM_PREFIX}/usr/include/alsa/input.h" -i
+		sed 's/ssize_t/size_t/g' "${MKSYSTEM_PREFIX}/usr/include/alsa/pcm.h" -i
+	popd
+	markDone "alsa-lib"
+fi
+
+if ! isDone "libogg"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://downloads.xiph.org/releases/ogg/libogg-${LIBOGG_VERSION}.tar.xz"
+		autotoolsBuild "libogg-${LIBOGG_VERSION}" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}"
+	popd
+	markDone "libogg"
+fi
+
+if ! isDone "libvorbis"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://downloads.xiph.org/releases/vorbis/libvorbis-${LIBVORBIS_VERSION}.tar.xz"
+		PKG_CONFIG="${MKSYSTEM_MISC}/pkgconf" autotoolsBuild "libvorbis-${LIBVORBIS_VERSION}" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}"
+	popd
+	markDone "libvorbis"
+fi
+
+if ! isDone "flac"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "flac" ]  && git clone --depth=1 "https://github.com/xiph/flac"
+		pushd "flac"
+			sed "s#I\$prefix/include#I\$ogg_prefix/include#" "m4/ogg.m4" -i
+		popd
+		PKG_CONFIG="${MKSYSTEM_MISC}/pkgconf" autotoolsBuild "flac" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}"
+
+	popd
+	markDone "flac"
+fi
+
+
+#  aarch64-linux-musl-gcc --sysroot=`pwd`/build/prefix -std=gnu99 -Wall -Wextra -fPIC -MD -include unistd.h -E -dD - </dev/null |grep ssize_t
+ 
+if ! isDone "libsndfile"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "libsndfile" ] && git clone "https://github.com/libsndfile/libsndfile"
+		CFLAGS="${MKSYSTEM_TARGET_CFLAGS}" PKG_CONFIG="${MKSYSTEM_MISC}/pkgconf" autotoolsBuild "libsndfile" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}" --disable-alsa --disable-full-suite
+	popd
+	markDone "libsndfile"
+fi
+
+if ! isDone "soxr"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://downloads.sourceforge.net/project/soxr/soxr-0.1.3-Source.tar.xz"
+		cmakeBuild "soxr-0.1.3-Source" \
+			-DBUILD_EXAMPLES='OFF' \
+			-DBUILD_SHARED_LIBS='ON' \
+			-DWITH_AVFFT='ON' \
+			-DWITH_LSR_BINDINGS='ON' \
+			-DWITH_OPENMP='ON' \
+			-DWITH_PFFFT='ON'
+	popd
+	markDone "soxr"
+fi
+
+if ! isDone "fftw"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://www.fftw.org/fftw-3.3.8.tar.gz"
+		FFTW_CONFIGURE_ARGS="--prefix=/usr --host=${MKSYSTEM_TARGET} --enable-neon --enable-generic-simd128  --enable-generic-simd256 --enable-threads --disable-static --enable-shared"
+		autotoolsBuild "fftw-3.3.8" ${FFTW_CONFIGURE_ARGS[@]}
+		autotoolsBuild "fftw-3.3.8" ${FFTW_CONFIGURE_ARGS[@]} --enable-float
+	popd
+	markDone "fftw"
+fi
+
+if ! isDone "libtool"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://ftp.gnu.org/gnu/libtool/libtool-2.4.6.tar.xz"
+		autotoolsBuild "libtool-2.4.6" --prefix=/usr --host=${MKSYSTEM_TARGET}
+	popd
+	markDone "libtool"
+fi
+
+# ew but required 😔👊
+if ! isDone "pulseaudio"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://www.freedesktop.org/software/pulseaudio/releases/pulseaudio-13.0.tar.xz"
+		mesonBuild "pulseaudio-13.0" -Dman=false -Dtests=false -Ddatabase=simple -Dalsa=enabled -Dbluez5=false -Ddbus=enabled -Dfftw=enabled -Dglib=disabled -Dgsettings=disabled -Dgtk=disabled -Dipv6=true -Dopenssl=disabled -Dudev=enabled -Dx11=disabled -Dsoxr=enabled -Dsystemd=disabled -Dlirc=disabled -Dasyncns=disabled -Davahi=disabled -Dorc=disabled -Dadrian-aec=true -Dwebrtc-aec=disabled -Dspeex=disabled -Djack=disabled
+	popd
+	markDone "pulseaudio"
+fi
+
+# ew but required 😔👊
+if ! isDone "dotuwu"; then
+	pushd "${MKSYSTEM_PREFIX}"
+		mkdir -p "home/kitteh"
+		pushd "home/kitteh"
+			[ -d ".uwu" ] && rm -rf ".uwu"
+			git clone "https://github.com/purringChaos/dotuwu" ".uwu"
+			pushd ".uwu"
+				INSTALL_DIR="${MKSYSTEM_PREFIX}/home/kitteh" bash ./install
+			popd
+		popd
+	popd
+	markDone "dotuwu"
+fi
+
+if ! isDone "timezones"; then
+	cat "/etc/localtime" > "${MKSYSTEM_PREFIX}/etc/localtime"
+	markDone "timezones"
+fi
+
+if ! isDone "zar"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "zar" ] && git clone --depth=1 --recursive "https://github.com/purringChaos/zar"
+		pushd "zar"
+			git submodule update --init
+			zig build -Dweather_location="${WEATHER_LOCATION:-London}"
+			cp "zig-cache/bin/zar" "${MKSYSTEM_PREFIX}/usr/bin/zar"
+		popd
+	popd
+	markDone "zar"
+fi
+
+
+
 # EEND
-
-
-
 exit
 
 
