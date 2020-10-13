@@ -9,6 +9,16 @@ ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 export PATH="/usr/lib/ccache/bin:${PATH}"
 
+
+# Deps for running
+# - Docbook-* 
+# - Wayland-Scanner
+# - xmlto
+# - etc
+# basically just recursively install all build deps for kde and gnome and sway and youll be fine2
+
+
+
 # Env
 # CPU stuff
 MKSYSTEM_ARCH=armv8-a+crypto+crc
@@ -398,7 +408,7 @@ cpp_link_args = common_flags + ['-L${MKSYSTEM_PREFIX}/usr/lib']
 [host_machine]
 system = 'linux'
 cpu_family = 'aarch64'
-cpu = 'armv8-a'
+cpu = 'aarch64'
 endian = 'little'
 EOF
 	popd
@@ -781,6 +791,15 @@ if ! isDone "sway"; then
 	markDone sway
 fi
 
+if ! isDone "swaybg"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "swaybg" ] && git clone "https://github.com/swaywm/swaybg"
+		mesonBuild "swaybg"
+	popd
+	markDone "swaybg"
+fi
+
+
 # Unifont
 if ! isDone "unifont"; then
 	pushd "${MKSYSTEM_SOURCES}"
@@ -859,12 +878,34 @@ if ! isDone "gdk-pixbuf"; then
 	markDone "gdk-pixbuf"
 fi
 
+
 if ! isDone "gtk"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "http://ftp.gnome.org/pub/gnome/sources/gtk+/3.24/gtk+-3.24.23.tar.xz"
 		mesonBuild "gtk+-3.24.23" -Dintrospection=false  -Dinstalled_tests=true -Dx11_backend=false -Dbroadway_backend=true -Dprint_backends=file
 	popd
 	markDone "gtk"
+fi
+
+if ! isDone "libxml2"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://xmlsoft.org/sources/libxml2-2.9.10.tar.gz"
+		autotoolsBuild "libxml2-2.9.10" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}" \
+			--with-sysroot="${MKSYSTEM_PREFIX}" \
+			--without-history \
+			--without-lzma
+	popd
+	markDone "libxml2"
+fi
+
+if ! isDone "shared-mime-info"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://gitlab.freedesktop.org/xdg/shared-mime-info/uploads/0440063a2e6823a4b1a6fb2f2af8350f/shared-mime-info-2.0.tar.xz"
+		mesonBuild "shared-mime-info-2.0" -Dupdate-mimedb=true
+	popd
+	markDone "shared-mime-info"
 fi
 
 if ! isDone "bash"; then
@@ -1055,6 +1096,7 @@ fi
 
 
 
+
 # EEND
 exit
 
@@ -1066,4 +1108,36 @@ if ! isDone ""; then
 	popd
 	markDone ""
 fi
+
+
+
+exit
+
+# TODO
+if [ "${NO_MKIMAGE}z" == "z" ]; then
+	mkdir -p "${MKSYSTEM_ROOT}/out"
+	pushd "${MKSYSTEM_ROOT}/out"
+		sudo losetup -D
+		sudo rm out.img
+		sudo umount mountpoint || true
+		sudo rm -rf mountpoint || true
+		fallocate -l 8GB out.img
+		
+		parted out.img mklabel msdos
+		parted out.img mkpart primary ext4 1% 100%
+		sudo losetup -fP out.img
+		LOOP_DEVICE=$(losetup -j out.img | sed "s/:.*//")
+		sudo mkfs.ext2 "${LOOP_DEVICE}p1"
+		mkdir "mountpoint"
+		sudo mount "${LOOP_DEVICE}p1" mountpoint
+		sudo rsync -aAXv "${MKSYSTEM_PREFIX}/" --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/media/*","/lost+found"} "mountpoint"
+		
+		
+	popd
+
+
+fi
+
+
+
 
