@@ -75,102 +75,12 @@ LIBSNDFILE_VERSION=1.0.28
 # VVER
 
 # Misc Functions
-function download() {
-	if [ ! -f "$(basename "${2:-$(basename "$1")}")" ]; then
-		aria2c -x4 -s4 "${1}"
-	fi
-}
-
-function extract() {
-	DIR="${2:-$(basename "${1}" | sed s/.tar.*$// | sed s/.t[gx]z$//)}"
-	if [ ! -d "${DIR}" ]; then
-		bsdtar xf "$(basename "${1}")"
-	fi
-}
-
-function downloadExtract() {
-	download "${1}" "${2}"
-	extract "${2:-${1}}" "${3}"
-}
-
-function markDone() {
-	touch "${MKSYSTEM_STATE}/installed/${1}"
-}
-
-function isDone() {
-	[ -f "${MKSYSTEM_STATE}/installed/${1}" ]
-}
-
-function mesonBuild() {
-	PKG="${1}"
-	shift
-	mkdir -p "${PKG}-build"
-	pushd "${PKG}-build"
-		PKG_CONFIG="${MKSYSTEM_MISC}/pkgconf" PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" meson . "../${PKG}" --cross-file="${MKSYSTEM_MISC}/meson.cross" -Dprefix="/usr" "$@"
-		ninja "${MAKEFLAGS}"
-		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
-		ninja clean "${MAKEFLAGS}"
-	popd
-	rm -rf "${PKG}-build"
-}
-
-function autotoolsBuild() {
-	NAME="${1}"
-	pushd "${NAME}"
-		shift
-		[ ! -f "configure" ] && [ -f "buildconf.sh" ] && ./buildconf.sh
-		[ ! -f "configure" ] && [ -f "autogen.sh" ] && ./autogen.sh
-		[ ! -f "configure" ] && autoreconf -fi
-		CFLAGS_BAK="${CFLAGS}"
-		[ "${DEST}z" == "z" ] && export CFLAGS="${MKSYSTEM_TARGET_CFLAGS}" CXXFLAGS="${MKSYSTEM_TARGET_CFLAGS}"
-		PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" ./configure "$@"
-		unset CFLAGS
-		unset CXXFLAGS
-		CFLAGS="${CFLAGS_BAK}"
-		make "${MAKEFLAGS}" V=1
-		if [ "${DEST}z" != "z" ]; then 
-			DESTDIR="${DEST}" make install "${MAKEFLAGS}"
-		else
-			DESTDIR="${MKSYSTEM_PREFIX}" make install DESTDIR="${MKSYSTEM_PREFIX}" "${MAKEFLAGS}" V=1
-		fi
-		make clean "${MAKEFLAGS}"
-	popd
-}
-
-
-function cmakeConfigure() {
-	cmake -GNinja . \
-		-DCMAKE_SYSTEM_PROCESSOR="aarch64" \
-		-DCMAKE_BUILD_TYPE='Release' \
-		-DCMAKE_C_COMPILER="${MKSYSTEM_TARGET}-gcc" \
-		-DCMAKE_CXX_COMPILER="${MKSYSTEM_TARGET}-g++" \
-		-DCMAKE_FIND_ROOT_PATH="${MKSYSTEM_PREFIX}" \
-		-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
-		-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-		-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-		-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSROOT="${MKSYSTEM_PREFIX}" \
-		-DCMAKE_C_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" \
-		-DCMAKE_CXX_FLAGS="${MKSYSTEM_TARGET_CFLAGS}" \
-		-DCMAKE_INSTALL_PREFIX="/usr" \
-		-DCMAKE_BUILD_SHARED_LIBS=on \
-		"$@"
-}
-
-
-function cmakeBuild() {
-	pushd "${1}"
-		shift
-		cmakeConfigure "$@"
-		ninja "${MAKEFLAGS}" -v
-		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
-		ninja clean "${MAKEFLAGS}"
-	popd
-}
+source ${ROOT_DIR}/functions.sh
 
 # Make all needed folders.
 
 mkdir -p "${MKSYSTEM_ROOT}"
-mkdir -p "${MKSYSTEM_STATE}" "${MKSYSTEM_STATE}/installed"
+mkdir -p "${MKSYSTEM_STATE}"
 mkdir -p "${MKSYSTEM_SOURCES}"
 mkdir -p "${MKSYSTEM_PREFIX}"
 mkdir -p "${MKSYSTEM_CCACHE_BIN}"
@@ -506,6 +416,14 @@ if ! isDone "wayland"; then
 		mesonBuild "wayland" -Dscanner=false -Ddocumentation=false -Ddtd_validation=false
 	popd
 	markDone "wayland"
+fi
+
+if ! isDone "wayland-protocols"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "wayland-protocols" ] && git clone --depth=1 "https://github.com/wayland-project/wayland-protocols"
+		autotoolsBuild "wayland-protocols" --prefix="/usr" --host="${MKSYSTEM_TARGET}"
+	popd
+	markDone "wayland-protocols"
 fi
 
 #. Install libdrm
@@ -1008,9 +926,6 @@ if ! isDone "flac"; then
 	markDone "flac"
 fi
 
-
-#  aarch64-linux-musl-gcc --sysroot=`pwd`/build/prefix -std=gnu99 -Wall -Wextra -fPIC -MD -include unistd.h -E -dD - </dev/null |grep ssize_t
- 
 if ! isDone "libsndfile"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "libsndfile" ] && git clone "https://github.com/libsndfile/libsndfile"
@@ -1057,7 +972,7 @@ fi
 if ! isDone "pulseaudio"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://www.freedesktop.org/software/pulseaudio/releases/pulseaudio-13.0.tar.xz"
-		mesonBuild "pulseaudio-13.0" -Dman=false -Dtests=false -Ddatabase=simple -Dalsa=enabled -Dbluez5=false -Ddbus=enabled -Dfftw=enabled -Dglib=disabled -Dgsettings=disabled -Dgtk=disabled -Dipv6=true -Dopenssl=disabled -Dudev=enabled -Dx11=disabled -Dsoxr=enabled -Dsystemd=disabled -Dlirc=disabled -Dasyncns=disabled -Davahi=disabled -Dorc=disabled -Dadrian-aec=true -Dwebrtc-aec=disabled -Dspeex=disabled -Djack=disabled
+		mesonBuild "pulseaudio-13.0" -Dman=false -Dtests=false -Ddatabase=simple -Dalsa=enabled -Dbluez5=false -Ddbus=disabled -Dfftw=enabled -Dglib=disabled -Dgsettings=disabled -Dgtk=disabled -Dipv6=true -Dopenssl=disabled -Dudev=enabled -Dx11=disabled -Dsoxr=enabled -Dsystemd=disabled -Dlirc=disabled -Dasyncns=disabled -Davahi=disabled -Dorc=disabled -Dadrian-aec=true -Dwebrtc-aec=disabled -Dspeex=disabled -Djack=disabled
 	popd
 	markDone "pulseaudio"
 fi
@@ -1077,11 +992,13 @@ if ! isDone "dotuwu"; then
 	markDone "dotuwu"
 fi
 
+# depends: created prefix
 if ! isDone "timezones"; then
 	cat "/etc/localtime" > "${MKSYSTEM_PREFIX}/etc/localtime"
 	markDone "timezones"
 fi
 
+# depends: nothing
 if ! isDone "zar"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "zar" ] && git clone --depth=1 --recursive "https://github.com/purringChaos/zar"
@@ -1094,7 +1011,78 @@ if ! isDone "zar"; then
 	markDone "zar"
 fi
 
+# depends: literally everything
+if ! isDone "ffmpeg"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "ffmpeg" ] && git clone --depth=1 "https://git.ffmpeg.org/ffmpeg.git" "ffmpeg"
+		PKG_CONFIG=${MKSYSTEM_MISC}/pkgconf \
+		PKG_CONFIG_LIBDIR="${MKSYSTEM_PREFIX}/usr/lib" \
+		PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig" \
+		autotoolsBuild "ffmpeg" \
+			--target-os=linux \
+			--arch=aarch64 \
+			--enable-cross-compile \
+			--cross-prefix=${MKSYSTEM_TARGET}- \
+			--prefix=/usr \
+			--pkg-config=${MKSYSTEM_MISC}/pkgconf \
+			--disable-static  \
+			--enable-shared \
+			--disable-htmlpages \
+			--disable-manpages \
+			--disable-doc \
+			--disable-debug \
+			--enable-gpl \
+			--enable-version3 \
+			--enable-ffmpeg \
+			--enable-ffprobe
+	popd
+	markDone "ffmpeg"
+fi
 
+
+# depends: freetype, fribidi, fontconfig, harfbuzz
+if ! isDone "libass"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "libass" ] &&  git clone --depth=1 "https://github.com/libass/libass"
+		autotoolsBuild "libass" --prefix=/usr --host=${MKSYSTEM_TARGET}
+	popd
+	markDone "libass"
+fi
+
+
+
+if ! isDone "mpv"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "mpv" ] && git clone --depth=1 "https://github.com/mpv-player/mpv"
+		pushd "mpv"
+			./bootstrap.py
+			CC=${MKSYSTEM_TARGET}-gcc \
+			CFLAGS="${MKSYSTEM_TARGET_CFLAGS} -I${MKSYSTEM_PREFIX}/usr/include" \
+			LDFLAGS="${MKSYSTEM_TARGET_CFLAGS} -L${MKSYSTEM_PREFIX}/usr/lib" \
+			PKG_CONFIG=${MKSYSTEM_MISC}/pkgconf \
+			PKG_CONFIG_LIBDIR="${MKSYSTEM_PREFIX}/usr/lib" \
+			PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig:${MKSYSTEM_PREFIX}/usr/share/pkgconfig" \
+			./waf configure -p \
+				--prefix=/usr \
+				--target=${MKSYSTEM_TARGET} \
+				--disable-vaapi \
+				--disable-vulkan \
+				--disable-lua \
+				--disable-rubberband \
+				--disable-x11 \
+				--disable-javascript \
+				--disable-libplacebo \
+				--disable-lua \
+				--disable-cuda-hwaccel \
+				--disable-cuda-interop \
+				--disable-libbluray \
+				--disable-caca 
+			./waf build "${MAKEFLAGS}" -v
+			./waf install --destdir=${MKSYSTEM_PREFIX} "${MAKEFLAGS}"
+		popd
+	popd
+	markDone "mpv"
+fi
 
 
 # EEND
