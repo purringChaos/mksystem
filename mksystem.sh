@@ -14,6 +14,7 @@ export PATH="/usr/lib/ccache/bin:${PATH}"
 # - Docbook-* 
 # - Wayland-Scanner
 # - xmlto
+# - g-ir-scanner (from gobject-introspection)
 # - etc
 # basically just recursively install all build deps for kde and gnome and sway and youll be fine2
 
@@ -39,7 +40,7 @@ MKSYSTEM_MISC="${MKSYSTEM_ROOT}/misc"
 MKSYSTEM_TARGET_CFLAGS="${MKSYSTEM_TARGET_CFLAGS} -I${MKSYSTEM_PREFIX}/usr/include --sysroot=${MKSYSTEM_PREFIX}"
 
 export PATH="${MKSYSTEM_CCACHE_BIN}:${MKSYSTEM_CROSS_TOOLS}/bin:${MKSYSTEM_CROSS_TOOLS_TARGET}/bin:$HOME/.cargo/bin:${PATH}"
-
+#export PATH="${MKSYSTEM_CROSS_TOOLS}/bin:${MKSYSTEM_CROSS_TOOLS_TARGET}/bin:$HOME/.cargo/bin:${PATH}"
 
 # Other
 MAKEFLAGS="-j6"
@@ -325,12 +326,27 @@ EOF
 	markDone "meson-cross-make"
 fi
 
+if ! isDone "cross-launcher"; then
+	pushd "${MKSYSTEM_MISC}"
+		cat > cross-launcher <<EOF
+#!/bin/bash
+LD_LIBRARY_PATH=${MKSYSTEM_PREFIX}/usr/lib ${MKSYSTEM_PREFIX}/usr/lib/libc.so \$@
+EOF
+		chmod +x "cross-launcher" 
+	popd
+	markDone "cross-launcher"
+fi
+
 
 # Install proper final musl.
 if ! isDone "final-musl"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "http://musl.libc.org/releases/musl-${MUSL_VERSION}.tar.gz"
-		DEST="${MKSYSTEM_PREFIX}" autotoolsBuild "musl-${MUSL_VERSION}" CROSS_COMPILE="${MKSYSTEM_TARGET}-" --prefix="/usr" --target="${MKSYSTEM_TARGET}"
+		DEST="${MKSYSTEM_PREFIX}" \
+		autotoolsBuild "musl-${MUSL_VERSION}" \
+			CROSS_COMPILE="${MKSYSTEM_TARGET}-" \
+			--prefix="/usr" \
+			--target="${MKSYSTEM_TARGET}"
 	popd
 	ln -sf "${MKSYSTEM_PREFIX}/usr/lib/libc.so" "${MKSYSTEM_PREFIX}/lib/pthread.so"
 	ln -sf "${MKSYSTEM_PREFIX}/usr/lib/libc.so" "${MKSYSTEM_PREFIX}/lib/pthread.so.1"
@@ -373,7 +389,10 @@ fi
 if ! isDone "zlib-ng"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		[ ! -d "zlib-ng" ] && git clone --depth=1 "https://github.com/zlib-ng/zlib-ng"
-		CC="${MKSYSTEM_TARGET}-gcc" autotoolsBuild "zlib-ng" --prefix="/usr" --zlib-compat
+		CC="${MKSYSTEM_TARGET}-gcc" \
+		autotoolsBuild "zlib-ng" \
+			--prefix="/usr" \
+			--zlib-compat
 	popd
 	markDone "zlib-ng"
 fi
@@ -382,7 +401,9 @@ fi
 if ! isDone "lzo"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz"
-		autotoolsBuild "lzo-2.10" --prefix="/usr" --host="${MKSYSTEM_TARGET}"
+		autotoolsBuild "lzo-2.10" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}"
 	popd
 fi
 
@@ -390,7 +411,9 @@ fi
 if ! isDone "libffi"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://github.com/libffi/libffi/releases/download/v${LIBFFI_VERSION}/libffi-${LIBFFI_VERSION}.tar.gz"
-		autotoolsBuild "libffi-${LIBFFI_VERSION}" --prefix="/usr" --host="${MKSYSTEM_TARGET}"
+		autotoolsBuild "libffi-${LIBFFI_VERSION}" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "libffi"
 fi
@@ -399,9 +422,184 @@ fi
 if ! isDone "libpng"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://downloads.sourceforge.net/libpng/libpng-${LIBPNG_VERSION}.tar.xz"
-		CC="${MKSYSTEM_TARGET}-gcc ${MKSYSTEM_TARGET_CFLAGS}" autotoolsBuild "libpng-${LIBPNG_VERSION}" --prefix="/usr" --host="${MKSYSTEM_TARGET}"
+		CC="${MKSYSTEM_TARGET}-gcc ${MKSYSTEM_TARGET_CFLAGS}" \
+		autotoolsBuild "libpng-${LIBPNG_VERSION}" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}"
 	popd
 	markDone "libpng"
+fi
+
+# Install libtiff
+if ! isDone "libtiff"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://download.osgeo.org/libtiff/tiff-4.1.0.tar.gz"
+		cmakeBuild "tiff-4.1.0"
+	popd
+	markDone "libtiff"
+fi
+
+# Install libwebp
+if ! isDone "libwebp"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://downloads.webmproject.org/releases/webp/libwebp-1.1.0.tar.gz"
+		autotoolsBuild "libwebp-1.1.0" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}" \
+			--enable-libwebpmux \
+            --enable-libwebpdemux \
+            --enable-libwebpdecoder \
+            --enable-libwebpextras \
+            --enable-swap-16bit-csp \
+            --disable-static
+	popd
+	markDone "libwebp"
+fi
+
+if ! isDone "libgpg-error"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://www.gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.39.tar.bz2"
+		autotoolsBuild "libgpg-error-1.39" \
+			--prefix=/usr \
+			--host=${MKSYSTEM_TARGET}
+	popd
+	markDone "libgpg-error"
+fi
+
+# depends: libgpg-error
+if ! isDone "libgcrypt"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://www.gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.8.6.tar.bz2"
+		autotoolsBuild "libgcrypt-1.8.6" \
+			--prefix=/usr \
+			--host=${MKSYSTEM_TARGET}
+	popd
+	markDone "libgcrypt"
+fi
+
+if ! isDone "libressl"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-3.2.1.tar.gz"
+		autotoolsBuild "libressl-3.2.1" \
+			--prefix=/usr \
+			--host=${MKSYSTEM_TARGET}
+	popd
+	markDone "libressl"
+fi
+
+if ! isDone "libunistring"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://ftp.gnu.org/gnu/libunistring/libunistring-0.9.10.tar.xz"
+		autotoolsBuild "libunistring-0.9.10" \
+			--prefix=/usr \
+			--host=${MKSYSTEM_TARGET}
+	popd
+	markDone "libunistring"
+fi
+
+# depends: libunistring
+if ! isDone "libidn2"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://ftp.gnu.org/gnu/libidn/libidn2-2.3.0.tar.gz"
+		autotoolsBuild "libidn2-2.3.0" \
+			--prefix=/usr \
+			--host=${MKSYSTEM_TARGET}
+	popd
+	markDone "libidn2"
+fi
+
+# depends libidn2
+if ! isDone "libpsl"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://github.com/rockdaboot/libpsl/releases/download/0.21.1/libpsl-0.21.1.tar.gz"
+		autotoolsBuild "libpsl-0.21.1" \
+			--prefix=/usr \
+			--host=${MKSYSTEM_TARGET}
+	popd
+	markDone "libpsl"
+fi
+
+if ! isDone "nettle"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://ftp.gnu.org/gnu/nettle/nettle-3.6.tar.gz"
+		CPPFLAGS="${MKSYSTEM_TARGET_CFLAGS}" \
+		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib -O0" \
+		MKSYSTEM_TARGET_CFLAGS="--sysroot=${MKSYSTEM_PREFIX} -O0" \
+		autotoolsBuild "nettle-3.6" \
+			--prefix=/usr \
+			--host=${MKSYSTEM_TARGET} \
+			--disable-openssl \
+			--disable-fat
+	popd
+	markDone "nettle"
+fi
+
+if ! isDone "libtasn1"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://ftp.gnu.org/gnu/libtasn1/libtasn1-4.16.0.tar.gz"
+		autotoolsBuild "libtasn1-4.16.0" \
+			--prefix=/usr \
+			--host=${MKSYSTEM_TARGET}
+	popd
+	markDone "libtasn1"
+fi
+
+# depends: libtasn1,
+if ! isDone "p11-kit"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://github.com/p11-glue/p11-kit/releases/download/0.23.21/p11-kit-0.23.21.tar.xz"
+		autotoolsBuild "p11-kit-0.23.21" \
+			--prefix=/usr \
+			--host=${MKSYSTEM_TARGET} \
+			--without-systemd
+	popd
+	markDone "p11-kit"
+fi
+
+if ! isDone "gmp"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://gmplib.org/download/gmp/gmp-6.2.0.tar.zst"
+		autotoolsBuild "gmp-6.2.0" \
+			--prefix=/usr \
+			--host=${MKSYSTEM_TARGET} \
+			--enable-cxx
+	popd
+	markDone "gmp"
+fi
+
+# depends: nettle, p11-kit, gmp
+if ! isDone "gnutls"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.6/gnutls-3.6.15.tar.xz"
+		#NETTLE_LIBS="${MKSYSTEM_TARGET_CFLAGS} -L${MKSYSTEM_PREFIX}/usr/lib -lhogweed -lnettle" \
+		PKG_CONFIG=${MKSYSTEM_MISC}/pkgconf \
+		PKG_CONFIG_LIBDIR="${MKSYSTEM_PREFIX}/usr/lib" \
+		PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig:${MKSYSTEM_PREFIX}/usr/share/pkgconfig" \
+		autotoolsBuild "gnutls-3.6.15" \
+			--prefix=/usr \
+			--host=${MKSYSTEM_TARGET} \
+			--disable-guile \
+			--with-default-trust-store-file=/etc/ssl/certs/ca-certificates.crt \
+			--without-p11-kit --enable-local-libopts
+	popd
+	markDone "gnutls"
+fi
+
+if ! isDone "icu"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://github.com/unicode-org/icu/releases/download/release-67-1/icu4c-67_1-src.tgz" "icu4c-67_1-src.tgz" "icu"
+		[ -d "icu-host" ] && rm -rf "icu-host"
+		cp -r "icu" "icu-host"
+		pushd "icu-host/source"
+			./configure --prefix=${MKSYSTEM_MISC}/icu-host
+			make "${MAKEFLAGS}"
+			make install "${MAKEFLAGS}"
+		popd
+		pushd "icu"
+			autotoolsBuild "source" --prefix=/usr --host=${MKSYSTEM_TARGET} --with-cross-build="${MKSYSTEM_SOURCES}/icu-host/source"
+		popd
+	popd
+	markDone "icu"
 fi
 
 # Install wayland.
@@ -618,6 +816,74 @@ if ! isDone "glib"; then
 	markDone "glib"
 fi
 
+# depends: glib
+if ! isDone "gobject-introspection"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://ftp.gnome.org/pub/gnome/sources/gobject-introspection/1.66/gobject-introspection-1.66.1.tar.xz"
+		echo -e "#!/bin/bash\n/usr/bin/g-ir-scanner -L${MKSYSTEM_PREFIX} \$@" > "${MKSYSTEM_MISC}/g-ir-scanner"
+		PKG_CONFIG=${MKSYSTEM_MISC}/pkgconf \
+		PKG_CONFIG_LIBDIR="${MKSYSTEM_PREFIX}/usr/lib" \
+		PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig:${MKSYSTEM_PREFIX}/usr/share/pkgconfig" \
+		PATH="${MKSYSTEM_MISC}:$PATH"
+		sed -i 's/typelibs/\[\]/' "gobject-introspection-1.66.1/meson.build"
+		mesonBuild "gobject-introspection-1.66.1" \
+			-Dgi_cross_use_prebuilt_gi=true -Dbuild_introspection_data=false
+	popd
+	markDone "gobject-introspection"
+fi
+
+# depends: gobject-introspection
+if ! isDone "gsettings-desktop-schemas"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://ftp.gnome.org/pub/gnome/sources/gsettings-desktop-schemas/3.38/gsettings-desktop-schemas-3.38.0.tar.xz"
+		mesonBuild "gsettings-desktop-schemas-3.38.0"
+		glib-compile-schemas "${MKSYSTEM_PREFIX}/usr/share/glib-2.0/schemas"
+	popd
+	markDone "gsettings-desktop-schemas"
+fi
+
+# depends: glib, gnutls, gsettings-desktop-schemas
+if ! isDone "glib-networking"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://ftp.gnome.org/pub/gnome/sources/glib-networking/2.66/glib-networking-2.66.0.tar.xz"
+		mesonBuild "glib-networking-2.66.0" -Dlibproxy=disabled 
+
+	popd
+	markDone "glib-networking"
+fi
+
+if ! isDone "sqlite"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://sqlite.org/2020/sqlite-autoconf-3330000.tar.gz"
+		SQLITE_CPPFLAGS="${MKSYSTEM_TARGET_CFLAGS} -DSQLITE_ENABLE_COLUMN_METADATA=1 \
+                             -DSQLITE_ENABLE_UNLOCK_NOTIFY \
+                             -DSQLITE_ENABLE_DBSTAT_VTAB=1 \
+                             -DSQLITE_ENABLE_FTS3_TOKENIZER=1 \
+                             -DSQLITE_SECURE_DELETE \
+                             -DSQLITE_MAX_VARIABLE_NUMBER=250000 \
+                             -DSQLITE_MAX_EXPR_DEPTH=10000 \
+                             -DSQLITE_DEFAULT_CACHE_SIZE=-1"
+		
+		CPPFLAGS="${SQLITE_CPPFLAGS}" CFLAGS="${MKSYSTEM_TARGET_CFLAGS}" autotoolsBuild "sqlite-autoconf-3330000" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}" \
+			--enable-fts3
+	popd
+	markDone "sqlite"
+fi
+
+# depends: glib-networking, libpsl, libxml2, sqlite
+if ! isDone "libsoup"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://ftp.gnome.org/pub/gnome/sources/libsoup/2.72/libsoup-2.72.0.tar.xz"
+		sed -i 's/assert.*returncode.*//' "libsoup-2.72.0/meson.build"
+		mesonBuild "libsoup-2.72.0" -Dvapi=disabled -Dgssapi=disabled -Dlibproxy=disabled -Dbrotli=disabled -Dgnome=false -Dtests=false -Dsysprof=disabled -Dintrospection=disabled
+	popd
+	markDone "libsoup"
+fi
+
+
+
 # Font Stuff.. (there has been circular depends for years at this point ":\(" )
 # Graphite2 - Stage0
 if ! isDone "graphite-stage0"; then
@@ -630,6 +896,7 @@ if ! isDone "graphite-stage0"; then
 	popd
 	markDone "graphite-stage0"
 fi
+
 # Freetype - Stage0
 if ! isDone "freetype-stage0"; then
 	pushd "${MKSYSTEM_SOURCES}"
@@ -655,7 +922,7 @@ fi
 if ! isDone "harfbuzz"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz"
-		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib ${MKSYSTEM_TARGET_CFLAGS} " mesonBuild "harfbuzz-${HARFBUZZ_VERSION}" -Dicu=disabled -Dtests=disabled # -Dgraphite=enabled -Dfontconfig=enabled -Dcairo=disabled
+		LDFLAGS="-L${MKSYSTEM_PREFIX}/usr/lib ${MKSYSTEM_TARGET_CFLAGS} " mesonBuild "harfbuzz-${HARFBUZZ_VERSION}" -Dicu=enabled -Dtests=disabled # -Dgraphite=enabled -Dfontconfig=enabled -Dcairo=disabled
 	popd
 	markDone "harfbuzz"
 fi
@@ -736,6 +1003,15 @@ if ! isDone "libjpeg-turbo"; then
 	markDone libjpeg-turbo
 fi
 
+# depends: zlib-ng, libpng, libtiff
+if ! isDone "openjpeg"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "https://github.com/uclouvain/openjpeg/archive/v2.3.1/openjpeg-2.3.1.tar.gz"
+		cmakeBuild "openjpeg-2.3.1"
+	popd
+	markDone "openjpeg"
+fi
+
 if ! isDone "dbus"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://dbus.freedesktop.org/releases/dbus/dbus-1.12.20.tar.gz"
@@ -782,7 +1058,8 @@ fi
 if ! isDone "libepoxy"; then
 	pushd "${MKSYSTEM_SOURCES}"
 		downloadExtract "https://github.com/anholt/libepoxy/releases/download/1.5.4/libepoxy-1.5.4.tar.xz"
-	mesonBuild "libepoxy-1.5.4" -Dx11=false
+		mesonBuild "libepoxy-1.5.4" -Dx11=false
+		sed "s/Requires.private: gl /Requires.private: /" -i "${MKSYSTEM_PREFIX}/lib/pkgconfig/epoxy.pc"
 	popd
 	markDone "libepoxy"
 fi
@@ -816,6 +1093,19 @@ if ! isDone "libxml2"; then
 			--without-lzma
 	popd
 	markDone "libxml2"
+fi
+
+# depends: libxml2
+if ! isDone "libxslt"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		downloadExtract "http://xmlsoft.org/sources/libxslt-1.1.34.tar.gz"
+		autotoolsBuild "libxslt-1.1.34" \
+			--prefix="/usr" \
+			--host="${MKSYSTEM_TARGET}" \
+			--with-sysroot="${MKSYSTEM_PREFIX}" \
+			--without-python
+	popd
+	markDone "libxslt"
 fi
 
 if ! isDone "shared-mime-info"; then
@@ -861,7 +1151,7 @@ if ! isDone "vte"; then
 		pushd "vte"
 			git apply "${MKSYSTEM_FILES}/vte.patch" || true
 		popd
-		mesonBuild "vte" -Dsixel=true -Dgnutls=false -Dglade=false -Dicu=false -D_systemd=false -Dvapi=false -Ddocs=false -Dgir=false
+		mesonBuild "vte" -Dsixel=true -Dgnutls=true -Dglade=false -Dicu=true -D_systemd=false -Dvapi=false -Ddocs=false -Dgir=false
 	popd
 	markDone "vte"
 fi
@@ -1049,7 +1339,23 @@ if ! isDone "libass"; then
 	markDone "libass"
 fi
 
-
+if ! isDone "luajit"; then
+	pushd "${MKSYSTEM_SOURCES}"
+		[ ! -d "LuaJIT" ] &&  git clone --depth=1 "https://github.com/LuaJIT/LuaJIT"
+		pushd "LuaJIT"
+			CROSS="${MKSYSTEM_TARGET}-" \
+			HOST_CC="${MKSYSTEM_TARGET}-gcc" \
+			TARGET_CFLAGS="${MKSYSTEM_TARGET_CFLAGS}" \
+				make "${MAKEFLAGS}"
+			make install \
+				PREFIX=/usr \
+				DESTDIR="${MKSYSTEM_PREFIX}" \
+				"${MAKEFLAGS}"
+		popd
+		ln -sf luajit-2.1.0-beta3 "${MKSYSTEM_PREFIX}/usr/bin/luajit"
+	popd
+	markDone "luajit"
+fi
 
 if ! isDone "mpv"; then
 	pushd "${MKSYSTEM_SOURCES}"
@@ -1084,20 +1390,44 @@ if ! isDone "mpv"; then
 	markDone "mpv"
 fi
 
-
-# EEND
-exit
-
-
-if ! isDone ""; then
+if ! isDone "webkit2gtk"; then
 	pushd "${MKSYSTEM_SOURCES}"
-		downloadExtract ""
-		mesonBuild ""
+		downloadExtract "https://webkitgtk.org/releases/webkitgtk-2.30.1.tar.xz"
+		PKG_CONFIG=${MKSYSTEM_MISC}/pkgconf \
+		PKG_CONFIG_LIBDIR="${MKSYSTEM_PREFIX}/usr/lib" \
+		PKG_CONFIG_PATH="${MKSYSTEM_PREFIX}/usr/lib/pkgconfig:${MKSYSTEM_PREFIX}/usr/share/pkgconfig" \
+		cmakeBuild "webkitgtk-2.30.1" \
+			-DCMAKE_INSTALL_PREFIX=/usr \
+			-DCMAKE_SKIP_RPATH=ON \
+			-DPORT=GTK \
+			-DLIB_INSTALL_DIR=/usr/lib \
+			-DUSE_LIBHYPHEN=OFF \
+			-DENABLE_SPELLCHECK=OFF \
+			-DENABLE_MINIBROWSER=ON \
+			-DUSE_WOFF2=OFF \
+			-DUSE_WPE_RENDERER=OFF \
+			-DUSE_SYSTEMD=OFF \
+			-DENABLE_X11_TARGET=OFF \
+			-DENABLE_GLES2=ON \
+			-DDUSE_WPE_RENDERER=ON \
+			-DCMAKE_DISABLE_FIND_PACKAGE_OpenGL=ON \
+			-DUSE_LIBSECRET=OFF \
+			-DENABLE_INTROSPECTION=OFF \
+			-DUSE_WOFF2=OFF \
+			-DENABLE_WAYLAND_TARGET=ON \
+			-DENABLE_BUBBLEWRAP_SANDBOX=OFF \
+			-DENABLE_VIDEO=OFF \
+			-DENABLE_WEB_AUDIO=OFF \
+			-DUSE_LIBNOTIFY=OFF
+			-Wno-dev
+	exit
 	popd
-	markDone ""
+	markDone "webkit2gtk"
 fi
 
 
+# EEND
+exit
 
 exit
 

@@ -85,6 +85,6 @@ function cmakeBuild() {
 		cmakeConfigure "$@"
 		ninja "${MAKEFLAGS}" -v
 		DESTDIR="${MKSYSTEM_PREFIX}" ninja install "${MAKEFLAGS}"
-		ninja clean "${MAKEFLAGS}"
+		#ninja clean "${MAKEFLAGS}"
 	popd
 }
